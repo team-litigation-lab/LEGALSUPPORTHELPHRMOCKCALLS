@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LSH HR Mock Calls</title>
+<meta name="description" content="The LSH interview phone: HR rings the applicant in the browser, live or with an AI agent caller.">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="manifest" href="manifest-interview.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#081226">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<script>window.HRMC_VIEW = 'applicant';</script>
+<header class="top">
+  <div class="brand"><span class="logo-tile"><img class="logo" src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397"></span><span>LSH HR Mock Calls <small id="brandSub">Interview phone</small></span></div>
+  <nav class="nav" id="nav"></nav>
+  <div class="who" id="who"></div>
+</header>
+<div id="netbar" class="netbar hidden">Reconnecting to the phone system…</div>
+<main id="app"><div class="empty">Loading…</div></main>
+<audio id="remoteAudio" autoplay playsinline></audio>
+<div id="toast" aria-live="polite"></div>
+<script src="js/api.js"></script>
+<script src="js/sounds.js"></script>
+<script src="js/phone.js"></script>
+<script src="js/ai-call.js"></script>
+<script src="js/app.js"></script>
+<script src="js/hr.js"></script>
+<script src="js/applicant.js"></script>
+<script>App.boot();</script>
+</body>
+</html>

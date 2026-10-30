@@ -1,7 +1,7 @@
 /* The Worker's API, the signed-in user, and small helpers every page uses. */
 (function () {
   'use strict';
-  // Two views, each with its own sign-in in the browser: the applicant's phone (/) and Admin & HR (/admin).
+  // Two views, each with its own sign-in in the browser: Admin & HR (/) and the applicant's phone (/interview).
   const VIEW = window.HRMC_VIEW === 'staff' ? 'staff' : 'applicant';
   const K_TOKEN = `hrmc_${VIEW}_token`, K_ME = `hrmc_${VIEW}_me`;
   const store = {

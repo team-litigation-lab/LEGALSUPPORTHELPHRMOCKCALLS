@@ -11,20 +11,20 @@ It is cloned from **LSH Ring Channel**'s phone system (the Switchboard, the WebR
 
 Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudflare Worker with one Durable Object (the Switchboard). The audio goes straight between the two browsers over WebRTC, through a TURN relay when a network blocks direct audio.
 
-## Two views: each side sees only its own sign-in
+## Two pages: each side sees only its own sign-in
 
 | Address | Who | What it shows |
 |---|---|---|
-| **`/`** (the main address) | 👤 Applicants only | With their **one-time link** (`/?invite=…`): **"Welcome to your interview — your full name — Enter →"**. Without it: the interview code and their full name. **No HR or admin sign-in.** |
-| **`/admin`** | 🛡 Admin and 🧑‍💼 HR only | The **Admin & HR sign-in**, then 🎛 Console, 👥 Applicants, 🗂 Call Logs and (admin) 🛡 Admin. **No applicant sign-in.** Kept out of search engines. |
+| **`/`** (the main address, the default landing) | 🛡 Admin and 🧑‍💼 HR only | The **HR & Admin sign-in**, then 🎛 Console, 👥 Applicants, 🗂 Call Logs and (admin) 🛡 Admin. No applicant sign-in. `/admin` forwards here. |
+| **`/interview`** | 👤 Applicants only | Reached through the **one-time link the system generates** on 👥 Applicants (`/interview?invite=…`): **"Welcome to your interview — your full name — Enter →"**. Opened without a link: the interview code and their full name. No HR or admin sign-in, and no link to it. |
 
-Each view keeps its own sign-in in the browser, so an admin can open a test applicant link on the same computer without being signed out of `/admin`. An interview link opened on `/admin` goes to `/`. `public/index.html` and `public/admin.html` are the two pages; they share the same scripts (`window.HRMC_VIEW` says which view it is).
+Each page keeps its own sign-in in the browser, so an admin can open a test applicant link on the same computer without being signed out. An interview link opened on the main page (including links sent before the move, `/?invite=…`) goes to `/interview`. `public/index.html` (HR & Admin) and `public/interview.html` (applicants) share the same scripts (`window.HRMC_VIEW` says which view it is). The whole site is kept out of search engines.
 
 ## Who signs in
 
 | Who | How | What they get |
 |---|---|---|
-| 🛡 **Admin** | Any name + the **admin passphrase** (`ADMIN_PASSPHRASE`) | Everything HR has, plus **🛡 Admin**: HR accounts, settings, status; deleting applicants (with their calls and recordings) and single calls. |
+| 🛡 **Admin** | On the main page: any name + the **admin passphrase** (`ADMIN_PASSPHRASE`) | Everything HR has, plus **🛡 Admin**: HR accounts, settings, status; deleting applicants (with their calls and recordings) and single calls. |
 | 🧑‍💼 **HR interviewer** | Their **username and password**, made by the admin on 🛡 Admin | 🎛 Console, 👥 Applicants, 🗂 Call Logs. |
 | 👤 **Applicant** | Their **one-time link** | ☎ My phone, for one interview session. |
 
@@ -42,7 +42,7 @@ Each view keeps its own sign-in in the browser, so an admin can open a test appl
 ## How a mock call goes
 
 **HR**
-1. Opens **`/admin`** and signs in with their **username and password** (or the admin with the admin passphrase).
+1. Opens the main address and signs in with their **username and password** (or the admin with the admin passphrase).
 2. **👥 Applicants → ＋ Add & get link:** the position, and the applicant's name if you like (they type theirs when they open the link). They get a **desk extension** (7001, 7002, …) and a **one-time link**, copied to the clipboard to send them.
 3. **🎛 Console:** the applicants whose phones are open are on the left. Click one (or dial their extension on the keypad), then:
    - **📞 Call (live)**: their phone rings; once they answer, you are the caller. Set the **Caller ID** name and number they see (or **🙈 Hide caller ID**).

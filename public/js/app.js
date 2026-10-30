@@ -2,10 +2,11 @@
    The app shell: sign-in, the top bar, the phone line to the
    Switchboard, and HR's pages other than the console.
    Two views, each its own page and its own sign-in (js/api.js):
-     /admin      Admin & HR (admin.html): the staff sign-in, then
+     /           Admin & HR (index.html, the default landing; /admin forwards here): the staff sign-in, then
      HR          #/console (js/hr.js) · #/applicants · #/calls · #/call/<id>
      Admin       all of HR's pages, and #/admin (HR accounts, settings, status)
-     /           the applicant's view (index.html): #/phone (js/applicant.js), signed in once by their one-time link
+     /interview  the applicant's view (interview.html): #/phone (js/applicant.js), signed in once by the one-time link
+                 the system generates for them (/interview?invite=<code>)
    ========================================================= */
 (function () {
   'use strict';
@@ -22,8 +23,8 @@
       // The link is used up only when they send it (so a link preview in an email or chat app doesn't use it).
       const q = new URLSearchParams(location.search);
       const invite = q.get('invite');
-      // An interview link always opens the applicant's view, never Admin & HR.
-      if (invite && API.view === 'staff') { location.replace('/?invite=' + encodeURIComponent(invite)); return; }
+      // An interview link always opens the applicant's page (/interview), never Admin & HR (links sent as /?invite= too).
+      if (invite && API.view === 'staff') { location.replace('/interview?invite=' + encodeURIComponent(invite)); return; }
       if (invite) { history.replaceState(null, '', location.pathname); API.signOut(); return App.gate('', invite); }
       let msg = ''; try { msg = sessionStorage.getItem('hrmc_msg') || ''; sessionStorage.removeItem('hrmc_msg'); } catch (e) {}
       // Each view signs in its own people only: staff on /admin, applicants on /.
@@ -39,13 +40,12 @@
 
     /* ---------- sign-in ---------- */
     /* The sign-in pages.
-       /       applicants only: with their link, just their name; without it, the interview code and their name.
-       /admin  HR's and the admin's sign-in only.
+       /           HR's and the admin's sign-in only (the default landing).
+       /interview  applicants only: with their link, just their name; without it, the interview code and their name.
        Neither shows the other's sign-in. */
     gate(error, invite) {
       document.getElementById('nav').innerHTML = '';
-      // The main page's only way to the staff side: a link in the corner, never the staff sign-in itself.
-      document.getElementById('who').innerHTML = API.view !== 'staff' ? '<a class="staff-link" href="/admin">🧑‍💼 HR &amp; Admin sign-in</a>' : '';
+      document.getElementById('who').innerHTML = '';
       const err = error ? `<p class="badge red" style="display:block;padding:8px 10px;border-radius:10px;white-space:normal">${esc(error)}</p>` : '';
       const logo = '<img class="gate-logo" src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397">';
       const staffCard = `<div class="card"><h2>🧑‍💼 HR &amp; Admin</h2>
@@ -214,7 +214,7 @@
         ${(x.items || []).length ? `<${x.ordered ? 'ol' : 'ul'} class="small" style="margin:0;padding-left:20px">${x.items.map((i) => `<li>${esc(i)}</li>`).join('')}</${x.ordered ? 'ol' : 'ul'}>` : ''}
         ${x.note ? `<p class="small" style="margin:4px 0 0"><b>${esc(x.note)}</b></p>` : ''}`).join('')}`;
     },
-    inviteLink(code) { return `${location.origin}/?invite=${encodeURIComponent(code)}`; },
+    inviteLink(code) { return `${location.origin}/interview?invite=${encodeURIComponent(code)}`; },
     async copy(text) { try { await navigator.clipboard.writeText(text); U.toast('Copied.', 'ok'); } catch (e) { prompt('Copy this:', text); } }
   };
 

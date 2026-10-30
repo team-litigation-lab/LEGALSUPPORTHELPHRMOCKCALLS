@@ -13,12 +13,12 @@ async function main() {
   // 🛡 The admin (the passphrase) makes an HR account.
   const adm = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
   adm.on('pageerror', (e) => console.log('Admin page error:', e.message));
-  await adm.goto(BASE + '/admin');
+  await adm.goto(BASE + '/');
   await adm.fill('#hrName', 'Site Admin');
   await adm.fill('#hrPass', PASS);
   await adm.click('#hrForm button[type=submit]');
   await adm.waitForSelector('#nav a[href="#/admin"]');
-  await adm.goto(BASE + '/admin#/admin');
+  await adm.goto(BASE + '/#/admin');
   await adm.fill('#uName', 'Hiring Manager');
   await adm.fill('#uUser', 'hmanager');
   await adm.fill('#uPass', 'interview-pass');
@@ -27,26 +27,26 @@ async function main() {
   await adm.screenshot({ path: shots + '/00-admin.png' });
   step('admin signed in and made an HR account');
 
-  // Each side sees only its own sign-in: the applicant's on /, HR's and the admin's on /admin.
+  // The default landing (/) is the HR & Admin sign-in; the applicant's page (/interview) has only their own entry.
   const plain = await (await browser.newContext()).newPage();
-  await plain.goto(BASE + '/');
+  await plain.goto(BASE + '/interview');
   await plain.waitForSelector('#apCode');
-  if (await plain.$('#hrForm')) throw new Error('the applicant page shows the HR & Admin sign-in');
-  await plain.click('.staff-link');
-  await plain.waitForURL(/\/admin/);
-  await plain.goto(BASE + '/');
-  await plain.waitForSelector('#apCode');
+  if (await plain.$('#hrForm') || await plain.$('.staff-link')) throw new Error('the applicant page shows the HR & Admin sign-in');
   await plain.screenshot({ path: shots + '/00-main-page.png' });
-  await plain.goto(BASE + '/admin');
+  await plain.goto(BASE + '/admin');   // an old bookmark
   await plain.waitForSelector('#hrForm');
+  if (new URL(plain.url()).pathname !== '/') throw new Error('/admin should forward to the main page');
   if (await plain.$('#apCode') || await plain.$('#apEnterName')) throw new Error('the admin page shows the applicant sign-in');
+  await plain.goto(BASE + '/?invite=oldstylecode');   // a link sent before the move
+  await plain.waitForSelector('#apEnterName');
+  if (new URL(plain.url()).pathname !== '/interview') throw new Error('an old-style link should open /interview');
   await plain.context().close();
-  step('applicants see only their sign-in on /, HR & Admin only theirs on /admin');
+  step('/ is the HR & Admin sign-in; /interview is the applicant\'s; /admin and old links forward');
 
   const ctx = (await browser.newContext({ permissions: ['microphone'], viewport: { width: 1400, height: 900 } }));
   const hr = await ctx.newPage();
   hr.on('pageerror', (e) => console.log('HR page error:', e.message));
-  await hr.goto(BASE + '/admin');
+  await hr.goto(BASE + '/');
   await hr.fill('#hrName', 'hmanager');
   await hr.fill('#hrPass', 'wrong-password');
   await hr.click('#hrForm button[type=submit]');
@@ -58,7 +58,7 @@ async function main() {
   step('HR signed in with their account (no Admin for HR)');
 
   // A new applicant and their link.
-  await hr.goto(BASE + '/admin#/applicants');
+  await hr.goto(BASE + '/#/applicants');
   await hr.fill('#apName', 'Jamie Cruz');
   await hr.fill('#apPos', 'Receptionist');
   await hr.click('#addAp button[type=submit]');
@@ -88,7 +88,7 @@ async function main() {
   await ap.waitForSelector('#kAv');
   step('the link works once; reloading keeps the session');
 
-  await hr.goto(BASE + '/admin#/console');
+  await hr.goto(BASE + '/#/console');
   await hr.waitForSelector(`#presence [data-ext="${ext}"]`);
   await hr.click(`#presence [data-ext="${ext}"]`);
   if (!/Record the call: ON/.test(await hr.textContent('#kRec'))) throw new Error('recording should be on by default');
@@ -151,7 +151,7 @@ async function main() {
   await hr.screenshot({ path: shots + '/02b-hr-scorecard.png', fullPage: true });
   await hr.click('#scBox .sc-save');
   await hr.waitForFunction(() => [...document.querySelectorAll('#toast .toast')].some((t) => /Nearly Client-Ready/.test(t.textContent)));
-  await hr.goto(BASE + '/admin#/calls');
+  await hr.goto(BASE + '/#/calls');
   await hr.waitForSelector('#callList tr[data-id]');
   await hr.click('#callList tr[data-id]');
   await hr.waitForSelector('#loadRec');
@@ -165,12 +165,12 @@ async function main() {
   step('call log shows the note, the score, the transfer and the recording');
 
   // Ending the session signs the applicant out; the admin deletes the applicant and their calls.
-  await hr.goto(BASE + '/admin#/applicants');
+  await hr.goto(BASE + '/#/applicants');
   hr.once('dialog', (d) => d.accept());
   await hr.click('[data-close]');
   await ap.waitForFunction(() => /session was ended|session has ended/.test(document.body.textContent), null, { timeout: 10000 });
   step('ending the session signs the applicant out');
-  await adm.goto(BASE + '/admin#/applicants');
+  await adm.goto(BASE + '/#/applicants');
   adm.once('dialog', (d) => d.accept());
   await adm.click('[data-del]');
   await adm.waitForFunction(() => /No applicants yet/.test(document.querySelector('#apList').textContent));
