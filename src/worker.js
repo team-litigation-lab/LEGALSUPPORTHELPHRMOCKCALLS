@@ -117,7 +117,8 @@ export default {
           await board(env).hrLogin(u.username);
           return json({ token: await makeToken(env, 'h', u.username, 12), role: 'h', id: u.username, name: u.name });
         }
-        if (safeEqual(String(password || ''), env.ADMIN_PASSPHRASE)) {
+        // Spaces or a line break pasted around the passphrase (here or in Cloudflare) don't count.
+        if (safeEqual(String(password || '').trim(), String(env.ADMIN_PASSPHRASE).trim())) {
           const who = String(username || '').trim().replace(/\s+/g, ' ').slice(0, 40) || 'Admin';
           return json({ token: await makeToken(env, 'a', who, 12), role: 'a', id: who, name: who });
         }
