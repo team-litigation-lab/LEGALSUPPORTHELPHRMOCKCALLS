@@ -17,6 +17,13 @@
   const esc = U.esc;
   const remote = () => document.getElementById('remoteAudio');
   const SETUP_KEY = 'hrmc_setup';
+  const RANDOM = '__random';
+  // The scenario picked on the console; 🎲 Surprise me draws one at random for each call (one the AI can play, for the agent caller).
+  function pickScenario(forAi) {
+    const all = (App.cfg.scenarios || []).filter((x) => !forAi || x.ai !== false);
+    if (HR.setup.scenarioId === RANDOM) return all[Math.floor(Math.random() * all.length)] || null;
+    return all.find((x) => x.id === HR.setup.scenarioId) || null;
+  }
 
   const HR = {
     t: null,                 // the live call on this console
@@ -55,7 +62,7 @@
           <div class="callkeys" id="callKeys"></div>
           <div class="opts">
             <label class="f" for="scen">Scenario</label>
-            <select id="scen"><option value="">${scen.length ? '— Open call (no scenario) —' : 'No scenarios yet: open call'}</option>${scen.map((x) => `<option value="${esc(x.id)}" ${x.id === s.scenarioId ? 'selected' : ''}>${esc(x.title)}${x.ai === false ? ' (live only)' : ''}</option>`).join('')}</select>
+            <select id="scen"><option value="">${scen.length ? '— Open call (no scenario) —' : 'No scenarios yet: open call'}</option>${scen.map((x) => `<option value="${esc(x.id)}" ${x.id === s.scenarioId ? 'selected' : ''}>${esc(x.title)}${x.ai === false ? ' (live only)' : ''}</option>`).join('')}${scen.length > 1 ? `<option value="${RANDOM}" ${s.scenarioId === RANDOM ? 'selected' : ''}>🎲 Surprise me (a random scenario each call)</option>` : ''}</select>
             <div class="row" style="gap:8px;margin-top:4px">
               <div style="flex:1;min-width:120px"><label class="f" for="cName">Caller ID name</label><input type="text" id="cName" maxlength="60" placeholder="WIRELESS CALLER" value="${esc(s.callerName)}"></div>
               <div style="flex:1;min-width:120px"><label class="f" for="cNum">Caller ID number</label><input type="text" id="cNum" maxlength="30" placeholder="(555) 012-3456" value="${esc(s.callerNumber)}"></div>
@@ -121,6 +128,7 @@
   function callerIdPreview() {
     const s = HR.setup, sc = (App.cfg.scenarios || []).find((x) => x.id === s.scenarioId);
     if (s.withhold) return 'PRIVATE CALLER';
+    if (s.scenarioId === RANDOM) return '🎲 a random scenario\'s caller';
     if (sc) return `${sc.caller.name.toUpperCase()} ${sc.caller.number || ''}`;
     return `${(s.callerName || 'WIRELESS CALLER').toUpperCase()} ${s.callerNumber || ''}`;
   }
@@ -202,7 +210,7 @@
   async function ringLive() {
     if (HR.busy()) return;
     const a = target(); if (!a) return;
-    const s = HR.setup, sc = (App.cfg.scenarios || []).find((x) => x.id === s.scenarioId);
+    const s = HR.setup, sc = pickScenario(false);
     try { await VoIP.Mic.open(); } catch (e) { return U.toast(e.message, 'error'); }
     VoIP.ice();   // warm up the TURN credentials
     HR.t = { status: 'placing', applicant: a };
@@ -210,7 +218,7 @@
   }
   function ringAi() {
     const a = target(); if (!a) return;
-    const s = HR.setup, sc = (App.cfg.scenarios || []).find((x) => x.id === s.scenarioId);
+    const s = HR.setup, sc = pickScenario(true);
     if (!sc && !s.persona.trim() && !confirm('No scenario and no persona: the AI will make up an everyday caller. Send it anyway?')) return;
     App.board.send({ t: 'ai-ring', applicantId: a.id, scenarioId: sc ? sc.id : '', persona: s.persona, opening: s.opening, callerName: s.callerName, callerNumber: s.callerNumber, gender: s.gender, voice: s.voice, withhold: s.withhold });
     U.toast(`🤖 Agent caller sent to ${a.name}.`);

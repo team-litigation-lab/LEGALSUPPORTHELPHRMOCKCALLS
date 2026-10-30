@@ -90,6 +90,20 @@ Each is scored 1–5; the chosen level's full description shows under it (hover 
 
 The **call note** the applicant fills in is the scenario's intake: full name, contact number, email, brief description, date of incident, city/state, spoken to another attorney, the consultation scheduled, and message / next steps. The **transfer directory**: Attorney 201 (consultations by appointment only: the scenario says the attorney doesn't pick up), Paralegal 301, Office Manager 401.
 
+**Four more callers for the agent caller** (the same call and the same briefing, so the applicant's information holds for each; HR's script on a live call too). Each has its own voice, which HR's 🎚 Voice still overrides:
+
+| Scenario | Caller | What it tests |
+|---|---|---|
+| Car Accident: Emotional Caller (the original) | Rachel Morgan, (702) 555-0148 | Composure, no legal advice or guarantees, availability (asks Monday 5 PM, then Friday) |
+| Slip and Fall: Elderly Caller | Dorothy Haines, 74, (702) 555-0193 | Patience and clarity: hard of hearing, asks to repeat, wants an in-person Saturday meeting; no email of her own |
+| Dog Bite: Angry, Impatient Caller | Marcus Reed, (702) 555-0127 | Composure and boundaries: demands a callback today, fired his last attorney, asks about fees and "yes or no, can I sue?" |
+| Workplace Injury: Spouse Calling | Linda Alvarez for her husband Robert, (702) 555-0166 | Probing and call control with a scattered caller; workers' comp advice; can't commit to a time: a detailed message (or a tentative Tuesday) |
+| Rideshare Passenger from Out of State | Kevin Tran, Phoenix AZ, (602) 555-0181 | Attention to detail: in a hurry, wants a one-hour consult and forms by email, "your time or mine?" (Las Vegas time) |
+
+**🎲 Surprise me** (in the console's Scenario list) draws a random scenario for each call, so HR doesn't know which caller the AI will play either.
+
+The scenario names are HR's only: the applicant's page shows the briefing under its own title, *Initial Client Intake & Scheduling*.
+
 To add a scenario, copy the shape at the top of `src/scenarios.js`. A call can still be an **open call** (Scenario: — Open call —): HR plays any caller live, or types the agent caller's persona.
 
 ## Deploy (Cloudflare)

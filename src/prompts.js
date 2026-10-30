@@ -1,9 +1,9 @@
 /* What the AI agent caller is told: the scenario (or the persona HR typed) and the rules of a phone call. */
 import { COMPANY, DIRECTORY, AI_VOICES, voiceOk } from './scenarios.js';
 
-// The caller's voice: the one HR picked, or one that suits the caller's gender.
+// The caller's voice: the one HR picked, else the scenario's own, else one that suits the caller's gender.
 export function voiceFor(s, picked) {
-  const chosen = voiceOk(picked);
+  const chosen = voiceOk(picked) || voiceOk(s.caller && s.caller.voice);
   if (chosen) return chosen;
   const pool = AI_VOICES.filter((v) => v.gender === (s.caller && s.caller.gender === 'm' ? 'm' : 'f')).map((v) => v.id);
   let h = 0; for (const ch of String((s.caller && s.caller.name) || s.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
