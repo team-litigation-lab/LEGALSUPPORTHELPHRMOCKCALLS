@@ -92,8 +92,19 @@
         } catch (e) { U.toast(e.message, 'error'); }
       };
     },
+    // 🔗 One-time access, done: the applicant submitted their note, their session is over and this browser forgets it.
+    finished() {
+      if (App.board) App.board.close();
+      API.signOut();
+      document.getElementById('nav').innerHTML = '';
+      document.getElementById('who').innerHTML = '';
+      $app().innerHTML = `<div class="gate"><div class="card" style="text-align:center"><img class="gate-logo" src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397">
+        <h1>Thank you!</h1><p>Your interview call is complete and your note was sent to HR.</p>
+        <p class="small muted">You can close this window. Your interview link has been used and won't open again; HR will be in touch about the next steps.</p></div></div>`;
+    },
     signOut() {
       if ((window.HR && HR.busy()) || (window.Applicant && Applicant.busy())) { if (!confirm('You are on a call. Sign out anyway?')) return; }
+      if (!App.isHR() && !confirm('Sign out? Your interview link works only once: you can\'t come back without a new link from HR.')) return;
       if (App.board) App.board.close();
       API.signOut();
       location.hash = '';
@@ -227,15 +238,14 @@
         <p class="muted small">Add an applicant to give them a desk extension and a <b>one-time interview link</b>. They open it in Chrome or Edge on a computer with a headset: it signs them in to their phone for one session (${App.cfg.features.sessionHours} h) and can't be used again. An unopened link lasts ${App.cfg.features.linkHours} h. ↻ New link replaces it (and ends any session); ⛔ End session signs them out.</p>
         <form id="addAp" class="row" style="align-items:end">
           <div style="flex:2;min-width:180px"><label class="f" for="apName">Applicant's name (optional: they type theirs)</label><input type="text" id="apName" maxlength="60"></div>
-          <div style="flex:2;min-width:160px"><label class="f" for="apPos">Position applied for</label><input type="text" id="apPos" maxlength="60" placeholder="e.g. Receptionist"></div>
           <button class="btn primary" type="submit">＋ Add &amp; get link</button>
         </form></div>
         <div class="card"><div class="tablewrap" id="apList"><div class="empty">Loading…</div></div></div>`;
       el.querySelector('#addAp').onsubmit = async (ev) => {
         ev.preventDefault();
         try {
-          const r = await API.post('/api/applicants/create', { name: el.querySelector('#apName').value, position: el.querySelector('#apPos').value });
-          el.querySelector('#apName').value = ''; el.querySelector('#apPos').value = '';
+          const r = await API.post('/api/applicants/create', { name: el.querySelector('#apName').value });
+          el.querySelector('#apName').value = '';
           await App.copy(App.inviteLink(r.applicant.invite));
           U.toast(`${r.applicant.name} is extension ${r.applicant.ext}. Their link is copied: send it to them.`, 'ok');
           draw();
@@ -246,11 +256,11 @@
         try { list = (await API.post('/api/applicants')).applicants; } catch (e) { return U.toast(e.message, 'error'); }
         const box = el.querySelector('#apList'); if (!box) return;
         if (!list.length) { box.innerHTML = '<div class="empty">No applicants yet. Add one above.</div>'; return; }
-        const LINK = { unused: ['blue', 'Not opened yet'], 'in-session': ['green', 'In session'], used: ['', 'Used'], expired: ['amber', 'Expired'], closed: ['', 'Ended'] };
-        box.innerHTML = `<table class="t"><thead><tr><th>Ext</th><th>Applicant</th><th>Position</th><th>One-time link</th><th>Calls</th><th>Avg score</th><th>Last seen</th><th></th></tr></thead><tbody>
+        const LINK = { unused: ['blue', 'Not opened yet'], 'in-session': ['green', 'In session'], used: ['', 'Completed (link used)'], expired: ['amber', 'Expired'], closed: ['', 'Ended'] };
+        box.innerHTML = `<table class="t"><thead><tr><th>Ext</th><th>Applicant</th><th>One-time link</th><th>Calls</th><th>Avg score</th><th>Last seen</th><th></th></tr></thead><tbody>
           ${list.map((a) => {
             const [c, label] = LINK[a.link] || ['', a.link];
-            return `<tr><td class="mono"><b>${esc(a.ext)}</b></td><td><b>${esc(a.name)}</b>${a.invitedAs && a.invitedAs !== a.name ? `<div class="tiny muted">invited as ${esc(a.invitedAs)}</div>` : ''}<div class="tiny muted">added by ${esc(a.createdBy || '—')}</div></td><td>${esc(a.position || '—')}</td>
+            return `<tr><td class="mono"><b>${esc(a.ext)}</b></td><td><b>${esc(a.name)}</b>${a.invitedAs && a.invitedAs !== a.name ? `<div class="tiny muted">invited as ${esc(a.invitedAs)}</div>` : ''}<div class="tiny muted">added by ${esc(a.createdBy || '—')}</div></td>
             <td><span class="badge ${c}">${label}</span>
               ${a.link === 'unused' ? `<div class="linkbox" style="margin-top:4px"><input type="text" readonly value="${esc(App.inviteLink(a.invite))}"><button class="btn small" data-copy="${esc(a.invite)}">Copy</button></div><div class="tiny muted">Unused link valid until ${esc(U.when(a.inviteExp))}</div>` : ''}
               ${a.link === 'in-session' ? `<div class="tiny muted">Opened ${esc(U.when(a.usedAt))} · session until ${esc(U.when(a.sessionExp))}</div>` : ''}
@@ -288,15 +298,15 @@
       const box = el.querySelector('#callList');
       if (!calls.length) box.innerHTML = '<div class="empty">No calls yet.</div>';
       else box.innerHTML = `<table class="t"><thead><tr><th>When</th><th>Applicant</th><th>Call</th><th>Status</th><th>Length</th><th>Final (J)</th><th>Assessment</th><th></th></tr></thead><tbody>
-        ${calls.map((c) => `<tr class="click" data-id="${esc(c.id)}"><td class="small">${esc(U.when(c.createdAt))}</td><td><b>${esc(c.applicantName)}</b><div class="tiny muted">${esc(c.position || '')}</div></td>
+        ${calls.map((c) => `<tr class="click" data-id="${esc(c.id)}"><td class="small">${esc(U.when(c.createdAt))}</td><td><b>${esc(c.applicantName)}</b></td>
           <td>${c.mode === 'ai' ? '<span class="badge violet">🤖 AGENT CALLER</span> ' : '<span class="badge blue">🎙 LIVE</span> '}${esc(c.title)}<div class="tiny muted">by ${esc(c.hr)}</div></td>
           <td>${App.statusBadge(c.status)}</td><td class="mono">${c.talkMs ? U.dur(c.talkMs) : '—'}</td><td>${c.scores && c.scores.J ? `<b>${c.scores.J}</b> / 5` : c.avg != null ? `${c.avg} / 5 <span class="tiny muted">(A–I avg)</span>` : '—'}${c.scores && c.scores.J && c.avg != null ? `<div class="tiny muted">A–I avg ${c.avg}</div>` : ''}</td><td>${esc(c.verdict || '—')}</td>
           <td>${c.recording ? '🎧' : ''}${c.noteSubmitted ? ' 📝' : ''}</td></tr>`).join('')}</tbody></table>`;
       box.querySelectorAll('tr[data-id]').forEach((tr) => { tr.onclick = () => App.nav('#/call/' + tr.dataset.id); });
       el.querySelector('#csv').onclick = () => {
         const R = App.cfg.rubric || [];
-        const rows = [['When', 'Applicant', 'Position', 'Type', 'Call', 'HR', 'Status', 'Length (s)'].concat(R.map((x) => `${x.k}. ${x.name}`), ['A–I average', 'Final assessment'])]
-          .concat(calls.map((c) => [new Date(c.createdAt).toISOString(), c.applicantName, c.position || '', c.mode === 'ai' ? 'Agent caller' : 'Live', c.title, c.hr, c.status, c.talkMs ? Math.round(c.talkMs / 1000) : '']
+        const rows = [['When', 'Applicant', 'Type', 'Call', 'HR', 'Status', 'Length (s)'].concat(R.map((x) => `${x.k}. ${x.name}`), ['A–I average', 'Final assessment'])]
+          .concat(calls.map((c) => [new Date(c.createdAt).toISOString(), c.applicantName, c.mode === 'ai' ? 'Agent caller' : 'Live', c.title, c.hr, c.status, c.talkMs ? Math.round(c.talkMs / 1000) : '']
             .concat(R.map((x) => (c.scores || {})[x.k] || ''), [c.avg == null ? '' : c.avg, c.verdict || ''])));
         const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
         const a = document.createElement('a');
@@ -314,7 +324,7 @@
       const holds = (m.holds || []).length, tx = m.transfers || [];
       el.innerHTML = `<div class="card"><div class="row"><a class="btn small" href="#/calls">← Call Logs</a><span class="spacer"></span>${App.isAdmin() ? '<button class="btn small red" id="del">🗑 Delete call</button>' : ''}</div>
           <h2 style="margin-top:12px">${c.mode === 'ai' ? '🤖 ' : '🎙 '}${esc(c.title)}</h2>
-          <div class="row small"><b>${esc(c.applicantName)}</b>${c.position ? `<span class="muted">· ${esc(c.position)}</span>` : ''}<span class="muted">· ${esc(U.when(c.createdAt))} · by ${esc(c.hr)}</span>${App.statusBadge(c.status)}</div>
+          <div class="row small"><b>${esc(c.applicantName)}</b><span class="muted">· ${esc(U.when(c.createdAt))} · by ${esc(c.hr)}</span>${App.statusBadge(c.status)}</div>
           <div class="row small muted" style="margin-top:6px">
             ${m.ringMs != null ? `<span>Answered after ${U.rings(m.ringMs)} ring(s)</span>` : ''}${m.talkMs ? `<span>· Call ${U.dur(m.talkMs)}</span>` : ''}
             <span>· ${holds} hold(s)</span>${tx.length ? `<span>· Transfers: ${tx.map((x) => esc(`${x.to} (${x.result || '—'})`)).join(', ')}</span>` : ''}

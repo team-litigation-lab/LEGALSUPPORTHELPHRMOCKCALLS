@@ -92,7 +92,7 @@
     const list = HR.applicants.slice().sort((a, b) => Number(a.ext) - Number(b.ext));
     box.innerHTML = (list.length ? list.map((a) => `<div class="item ${a.ext === HR.dial ? 'sel' : ''}" data-ext="${esc(a.ext)}">
         <span class="dot ${a.call ? 'call' : a.status}"></span><span class="ext">${esc(a.ext)}</span>
-        <span style="flex:1;min-width:0"><b>${esc(a.name)}</b><div class="tiny muted">${esc(a.position || '')}</div></span>
+        <span style="flex:1;min-width:0"><b>${esc(a.name)}</b></span>
         <span class="tiny muted">${a.call ? 'on a call' : a.status === 'available' ? 'available' : 'away'}</span></div>`).join('')
       : '<p class="muted small">No applicant has their phone open right now.</p>')
       + (HR.desks.length ? `<p class="tiny muted" style="margin-top:8px">HR on: ${HR.desks.map((d) => `${esc(d.name)} (${esc(d.ext)})${d.call ? ' 📞' : ''}`).join(', ')}</p>` : '');

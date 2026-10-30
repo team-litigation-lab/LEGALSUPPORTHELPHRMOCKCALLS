@@ -615,7 +615,9 @@ export class Switchboard extends DurableObject {
     let freed = false, tell = false;
     if (mine) {
       if (p.note && !d.noteSubmittedAt) { d.note = cleanNote(p.note); tell = r.mode === 'ai'; }
-      if (p.submit && !d.noteSubmittedAt && r.status !== 'live') d.noteSubmittedAt = now();
+      // 🔗 One-time access: submitting the note after the call ends the applicant's session for good (their link
+      // is already used, so they can't come back without a new one from HR).
+      if (p.submit && !d.noteSubmittedAt && r.status !== 'live') { d.noteSubmittedAt = now(); r._done = true; }
       if (r.mode === 'ai' && r.status === 'live') {
         if (Array.isArray(p.transcript) && !d.typed) d.transcript = p.transcript.slice(0, 400).map((x) => ({ who: x && x.who === 'caller' ? 'caller' : 'applicant', text: String((x && x.text) || '').slice(0, 1500) })).filter((x) => x.text);
         if (p.metrics && typeof p.metrics === 'object') {
@@ -636,7 +638,9 @@ export class Switchboard extends DurableObject {
     this.save(r);
     if (freed) this.freePhones(r);
     if (tell) this.tellHR({ t: 'ai-call', call: this.aiBrief(r) });
-    return { ok: true, call: r };
+    const done = !!r._done; delete r._done;
+    if (done) this.sql.exec('UPDATE applicants SET session = NULL, session_exp = ? WHERE id = ?', now(), r.applicant_id);
+    return { ok: true, call: r, done };
   }
 
   // 🤖 AI calls HR sent: what the console shows.

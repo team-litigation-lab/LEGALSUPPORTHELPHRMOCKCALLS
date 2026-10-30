@@ -36,6 +36,7 @@ Each page keeps its own sign-in in the browser, so an admin can open a test appl
 **🔗 One-time access**
 - Each applicant gets **one link, good for one sign-in**. Opening it asks for their **full name**; sending it signs them in to their phone and **uses the link up**: used again (in any browser, by anyone) it says *already used*. Opening the link alone doesn't use it, so a link preview in an email or chat app can't. Reloading their own page keeps their session.
 - The name they type is the one HR sees. HR's name for them is optional when adding them; when it differs, 👥 Applicants shows *invited as …*.
+- **Submitting the call note ends their access for good:** they see *Thank you! Your interview call is complete*, this browser forgets the session, and reloading shows only the code-and-name entry, where the used link is refused. Signing out is final too (they're warned). For a second call, HR makes ↻ New link.
 - The session ends after the hours set on ⚙️ Settings, when HR presses **⛔ End session**, or when HR makes **↻ New link** (which also cancels the old one). The applicant is signed out at once.
 - 👥 Applicants shows each link's state: *Not opened yet* (with Copy), *In session*, *Used*, *Expired* or *Ended*. The link is only shown while it is unused.
 
@@ -43,7 +44,7 @@ Each page keeps its own sign-in in the browser, so an admin can open a test appl
 
 **HR**
 1. Opens the main address and signs in with their **username and password** (or the admin with the admin passphrase).
-2. **👥 Applicants → ＋ Add & get link:** the position, and the applicant's name if you like (they type theirs when they open the link). They get a **desk extension** (7001, 7002, …) and a **one-time link**, copied to the clipboard to send them.
+2. **👥 Applicants → ＋ Add & get link:** the applicant's name if you like (they type theirs when they open the link). They get a **desk extension** (7001, 7002, …) and a **one-time link**, copied to the clipboard to send them.
 3. **🎛 Console:** the applicants whose phones are open are on the left. Click one (or dial their extension on the keypad), then:
    - **📞 Call (live)**: their phone rings; once they answer, you are the caller. Set the **Caller ID** name and number they see (or **🙈 Hide caller ID**).
    - **🤖 Agent caller**: the AI rings their phone and plays the caller. Under **🤖 Agent caller setup**, type who the AI plays (a persona), an optional opening line, and the voice. **👂 Follow** shows the conversation and the note live; **⏹** ends it.

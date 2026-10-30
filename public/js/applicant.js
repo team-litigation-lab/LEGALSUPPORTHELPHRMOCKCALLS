@@ -135,7 +135,12 @@
     form.addEventListener('input', (ev) => { const k = ev.target.dataset.k; if (k) { p.note[k] = ev.target.value; sendNote(p); } });
     form.onsubmit = async (ev) => {
       ev.preventDefault();
-      try { await API.post('/api/call/update', { id: p.callId, note: p.note, submit: true }); p.noteDone = true; U.toast('Your note was sent to HR.', 'ok'); renderSide(); }
+      try {
+        const r = await API.post('/api/call/update', { id: p.callId, note: p.note, submit: true });
+        p.noteDone = true;
+        if (r.done) return App.finished();   // one-time access: the interview is over
+        U.toast('Your note was sent to HR.', 'ok'); renderSide();
+      }
       catch (e) { U.toast(e.message, 'error'); }
     };
   }

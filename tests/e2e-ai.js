@@ -67,7 +67,7 @@ async function main() {
   await ap.click('#kEnd');
   await ap.waitForSelector('#noteForm button[type=submit]');
   await ap.click('#noteForm button[type=submit]');
-  await ap.waitForFunction(() => /note was sent/.test(document.body.textContent));
+  await ap.waitForFunction(() => /interview call is complete/.test(document.body.textContent));
   step('applicant hung up and submitted the note');
 
   await hr.goto(BASE + '/#/calls');

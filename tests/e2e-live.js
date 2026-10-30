@@ -60,7 +60,6 @@ async function main() {
   // A new applicant and their link.
   await hr.goto(BASE + '/#/applicants');
   await hr.fill('#apName', 'Jamie Cruz');
-  await hr.fill('#apPos', 'Receptionist');
   await hr.click('#addAp button[type=submit]');
   const link = await hr.waitForSelector('.linkbox input').then((x) => x.inputValue());
   const ext = (await hr.textContent('#apList td.mono')).trim();
@@ -140,8 +139,15 @@ async function main() {
 
   await ap.fill('#n_action', 'Message to the case manager.');
   await ap.click('#noteForm button[type=submit]');
-  await ap.waitForFunction(() => /note was sent/.test(document.body.textContent));
-  step('applicant submitted the note');
+  await ap.waitForFunction(() => /interview call is complete/.test(document.body.textContent));
+  await ap.screenshot({ path: shots + '/03b-applicant-done.png' });
+  await ap.reload();
+  await ap.waitForSelector('#apCode');   // signed out for good: only the code-and-name entry
+  await ap.goto(link);
+  await ap.fill('#apEnterName', 'Jamie Cruz');
+  await ap.click('#enterForm button[type=submit]');
+  await ap.waitForFunction(() => /already used/.test(document.body.textContent));
+  step('submitting the note ends the applicant\'s access for good (reload and the link both refused)');
 
   // 📋 The scoring matrix: A–I and J, then save.
   for (const [k, n] of [['A', 5], ['B', 4], ['C', 4], ['D', 4], ['E', 3], ['F', 4], ['G', 5], ['H', 4], ['I', 4], ['J', 4]]) await hr.click(`#scBox .sc-row[data-k="${k}"] [data-n="${n}"]`);
@@ -164,15 +170,27 @@ async function main() {
   await hr.screenshot({ path: shots + '/03-hr-call-log.png', fullPage: true });
   step('call log shows the note, the score, the transfer and the recording');
 
-  // Ending the session signs the applicant out; the admin deletes the applicant and their calls.
+  // HR's ⛔ End session signs an applicant out at once (a second applicant, still in session).
   await hr.goto(BASE + '/#/applicants');
+  await hr.fill('#apName', 'Pat Lee');
+  await hr.click('#addAp button[type=submit]');
+  await hr.waitForFunction(() => /Pat Lee/.test(document.querySelector('#apList').textContent));
+  const link2 = await hr.locator('#apList tr', { hasText: 'Pat Lee' }).locator('.linkbox input').inputValue();
+  const ap2 = await (await browser.newContext({ permissions: ['microphone'] })).newPage();
+  await ap2.goto(link2);
+  await ap2.fill('#apEnterName', 'Pat Lee');
+  await ap2.click('#enterForm button[type=submit]');
+  await ap2.waitForSelector('#kAv');
+  await hr.reload();
+  await hr.waitForFunction(() => /In session/.test(document.querySelector('#apList').textContent) && /Completed/.test(document.querySelector('#apList').textContent));
   hr.once('dialog', (d) => d.accept());
-  await hr.click('[data-close]');
-  await ap.waitForFunction(() => /session was ended|session has ended/.test(document.body.textContent), null, { timeout: 10000 });
-  step('ending the session signs the applicant out');
+  await hr.locator('#apList tr', { hasText: 'Pat Lee' }).locator('[data-close]').click();
+  await ap2.waitForFunction(() => /session was ended|session has ended/.test(document.body.textContent), null, { timeout: 10000 });
+  step('HR\'s End session signs an applicant out at once');
   await adm.goto(BASE + '/#/applicants');
-  adm.once('dialog', (d) => d.accept());
-  await adm.click('[data-del]');
+  adm.on('dialog', (d) => d.accept());
+  await adm.waitForSelector('[data-del]');
+  while (await adm.$('[data-del]')) { const n = (await adm.$$('[data-del]')).length; await adm.click('[data-del]'); await adm.waitForFunction((n) => document.querySelectorAll('[data-del]').length < n, n); }
   await adm.waitForFunction(() => /No applicants yet/.test(document.querySelector('#apList').textContent));
   step('admin deleted the applicant, their calls and recordings');
 

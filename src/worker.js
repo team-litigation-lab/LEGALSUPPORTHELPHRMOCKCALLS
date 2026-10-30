@@ -210,7 +210,7 @@ export default {
       if (path === '/api/call/update') {
         const res = await sb.updateCall(String(body.id || ''), me, body);
         if (res.error) return json({ error: res.error }, 403);
-        return json(hr ? { call: forHR(res.call) } : { ok: true });
+        return json(hr ? { call: forHR(res.call) } : { ok: true, done: !!res.done });
       }
       if (path === '/api/call/delete') {
         if (!admin) return adminOnly();
