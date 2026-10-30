@@ -43,7 +43,7 @@
     if (!p || p.status === 'ended') {
       box.innerHTML = `<div class="line">${esc(cfg.company.name)} · ${esc(cfg.company.line)}</div><div class="big">${esc(me.name || '')}</div>
         <div>Desk extension <b>${esc(cfg.me.ext || '')}</b></div>
-        <div class="tags"><span class="tag">${Applicant.status === 'available' ? '● AVAILABLE' : '◌ AWAY'}</span><span class="tag">${Applicant.hrOnline ? '🧑‍💼 HR is online' : 'Waiting for HR'}</span></div>`;
+        <div class="tags"><span class="tag">${Applicant.hrOnline ? '🧑‍💼 HR is online' : 'Waiting for HR'}</span></div>`;
       return;
     }
     const state = p.needRejoin ? 'Call in progress' : { ringing: '📞 Incoming call…', connecting: 'Connecting…', live: 'On the call' }[p.status] || '';
@@ -83,11 +83,9 @@
       if (tf) tf.onsubmit = (ev) => { ev.preventDefault(); const i = tf.querySelector('#typeIn'); const v = i.value.trim(); if (v && !AiCall.busy()) { AiCall.say(v); i.value = ''; } };
       return;
     }
-    box.innerHTML = `<div class="callkeys"><button class="pkey ${Applicant.status === 'available' ? 'on' : ''}" id="kAv">● Available</button><button class="pkey ${Applicant.status === 'away' ? 'on' : ''}" id="kAw">◌ Away</button></div>`;
-    box.querySelector('#kAv').onclick = () => setStatus('available');
-    box.querySelector('#kAw').onclick = () => setStatus('away');
+    // Waiting for a call: the 📞 Answer key, lit when the phone rings (the applicant is always reachable: no Away)
+    box.innerHTML = '<div class="callkeys"><button class="pkey go" id="kAnsIdle" style="grid-column:1/-1" disabled title="Lights up when the phone rings">📞 Answer</button></div>';
   }
-  function setStatus(s) { Applicant.status = s; App.board.send({ t: 'status', status: s }); renderScreen(); renderKeys(); }
 
   // ↪ The directory, and what's happening with a transfer.
   function renderTransfer() {
@@ -115,7 +113,7 @@
         ${p && p.noteDone ? '<p class="badge green" style="display:inline-block">✔ Your note was sent to HR.</p>' : ''}
         <ol style="padding-left:18px">
           <li>Keep this page open, with a headset on. Use <b>🎧 Audio check</b> to test your microphone.</li>
-          <li>Stay <b>● Available</b>. When the phone rings, answer it as an agent of ${esc(App.cfg.company.name)}.</li>
+          <li>When the phone rings, press <b>📞 Answer</b> and answer it as an agent of ${esc(App.cfg.company.name)}.</li>
           <li>Handle the call as you would a real one: greet the caller, find out what they need, use <b>Hold</b> or <b>Transfer</b> when it's right.</li>
           <li>Take the call note as you go (it appears here once you answer), and <b>submit</b> it after the call.</li>
         </ol>
@@ -360,7 +358,6 @@
     switch (m.t) {
       case 'hello':
         App.cfg.me.ext = (m.me && m.me.ext) || App.cfg.me.ext;
-        if (Applicant.status === 'away') App.board.send({ t: 'status', status: 'away' });
         // This page reloaded mid-call: the call waits for a click to reconnect (browsers need one to play audio).
         if (m.active && !active(Applicant.p)) {
           const a = m.active;

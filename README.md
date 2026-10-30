@@ -54,7 +54,7 @@ Each page keeps its own sign-in in the browser, so an admin can open a test appl
 
 **Applicant**
 1. Opens the one-time link in Chrome or Edge on a computer, with a headset, **types their full name** and presses **Enter →**. That signs them in to **☎ My phone** for this interview; the link can't be used again. (Or, on the main page, they type the interview code and their name.) They allow the microphone when the browser asks.
-2. Stays **● Available**. When the phone rings they see the caller ID and **📞 Answer**.
+2. Waits with the phone open: the **📞 Answer** key lights up when it rings, with the caller ID on the screen.
 3. On the call: **Mute**, **⏸ Hold** (the caller hears hold music), **↪ Transfer** (to an extension in the directory), **🔊 Speaker**, **Hang up**, and the **📝 call note**.
 4. After the call they finish the note and **📨 Submit** it. Applicants never see HR's scores or notes, nor the call logs.
 

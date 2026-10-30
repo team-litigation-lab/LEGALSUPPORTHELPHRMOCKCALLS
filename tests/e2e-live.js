@@ -73,7 +73,7 @@ async function main() {
   await ap.screenshot({ path: shots + '/00-applicant-name.png' });
   await ap.fill('#apEnterName', 'Jamie Cruz');
   await ap.click('#enterForm button[type=submit]');
-  await ap.waitForSelector('#kAv');
+  await ap.waitForSelector('#kAnsIdle');
   step('applicant opened the link and typed their name');
 
   // One-time access: the same link, opened again anywhere, doesn't sign in.
@@ -84,7 +84,7 @@ async function main() {
   await again.waitForFunction(() => /already used/.test(document.body.textContent));
   await again.context().close();
   await ap.reload();
-  await ap.waitForSelector('#kAv');
+  await ap.waitForSelector('#kAnsIdle');
   step('the link works once; reloading keeps the session');
 
   await hr.goto(BASE + '/#/console');
@@ -181,7 +181,7 @@ async function main() {
   await ap2.goto(link2);
   await ap2.fill('#apEnterName', 'Pat Lee');
   await ap2.click('#enterForm button[type=submit]');
-  await ap2.waitForSelector('#kAv');
+  await ap2.waitForSelector('#kAnsIdle');
   await hr.reload();
   await hr.waitForFunction(() => /In session/.test(document.querySelector('#apList').textContent) && /Completed/.test(document.querySelector('#apList').textContent));
   hr.once('dialog', (d) => d.accept());

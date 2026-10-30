@@ -30,7 +30,7 @@ async function main() {
   await ap.goto(link);
   await ap.fill('#apEnterName', 'Alex Rivera');
   await ap.click('#enterForm button[type=submit]');
-  await ap.waitForSelector('#kAv');
+  await ap.waitForSelector('#kAnsIdle');
   step('applicant signed in');
 
   await hr.goto(BASE + '/#/console');
