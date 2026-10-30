@@ -32,6 +32,10 @@ async function main() {
   await plain.goto(BASE + '/');
   await plain.waitForSelector('#apCode');
   if (await plain.$('#hrForm')) throw new Error('the applicant page shows the HR & Admin sign-in');
+  await plain.click('.staff-link');
+  await plain.waitForURL(/\/admin/);
+  await plain.goto(BASE + '/');
+  await plain.waitForSelector('#apCode');
   await plain.screenshot({ path: shots + '/00-main-page.png' });
   await plain.goto(BASE + '/admin');
   await plain.waitForSelector('#hrForm');

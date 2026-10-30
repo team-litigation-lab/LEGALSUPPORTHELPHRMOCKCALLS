@@ -44,7 +44,8 @@
        Neither shows the other's sign-in. */
     gate(error, invite) {
       document.getElementById('nav').innerHTML = '';
-      document.getElementById('who').innerHTML = '';
+      // The main page's only way to the staff side: a link in the corner, never the staff sign-in itself.
+      document.getElementById('who').innerHTML = API.view !== 'staff' ? '<a class="staff-link" href="/admin">🧑‍💼 HR &amp; Admin sign-in</a>' : '';
       const err = error ? `<p class="badge red" style="display:block;padding:8px 10px;border-radius:10px;white-space:normal">${esc(error)}</p>` : '';
       const logo = '<img class="gate-logo" src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397">';
       const staffCard = `<div class="card"><h2>🧑‍💼 HR &amp; Admin</h2>
