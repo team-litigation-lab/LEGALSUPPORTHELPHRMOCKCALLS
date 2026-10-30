@@ -11,6 +11,15 @@ It is cloned from **LSH Ring Channel**'s phone system (the Switchboard, the WebR
 
 Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudflare Worker with one Durable Object (the Switchboard). The audio goes straight between the two browsers over WebRTC, through a TURN relay when a network blocks direct audio.
 
+## Two views, each its own page
+
+| Address | Who | What it shows |
+|---|---|---|
+| **`/admin`** | 🛡 Admin and 🧑‍💼 HR | The **Admin & HR sign-in**, then 🎛 Console, 👥 Applicants, 🗂 Call Logs and (admin) 🛡 Admin. Kept out of search engines. |
+| **`/`** (the main address) | 👤 Applicants | Only the applicant's phone. **No sign-in form**: their one-time link (`/?invite=…`) signs them in. Without a link it says to open the link HR sent. |
+
+Each view keeps its own sign-in in the browser, so an admin can open a test applicant link on the same computer without being signed out of `/admin`. An interview link opened on `/admin` goes to `/`. `public/admin.html` and `public/index.html` are the two pages; they share the same scripts (`window.HRMC_VIEW` says which view it is).
+
 ## Who signs in
 
 | Who | How | What they get |
@@ -32,7 +41,7 @@ Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudfl
 ## How a mock call goes
 
 **HR**
-1. Opens the site and signs in with their **username and password** (or the admin with the admin passphrase).
+1. Opens **`/admin`** and signs in with their **username and password** (or the admin with the admin passphrase).
 2. **👥 Applicants → ＋ Add & get link:** the applicant's name and the position. They get a **desk extension** (7001, 7002, …) and a **one-time link**, copied to the clipboard to send them.
 3. **🎛 Console:** the applicants whose phones are open are on the left. Click one (or dial their extension on the keypad), then:
    - **📞 Call (live)**: their phone rings; once they answer, you are the caller. Set the **Caller ID** name and number they see (or **🙈 Hide caller ID**).

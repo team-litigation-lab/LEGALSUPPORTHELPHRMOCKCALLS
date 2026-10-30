@@ -1,7 +1,9 @@
 /* The Worker's API, the signed-in user, and small helpers every page uses. */
 (function () {
   'use strict';
-  const K_TOKEN = 'hrmc_token', K_ME = 'hrmc_me';
+  // Two views, each with its own sign-in in the browser: the applicant's phone (/) and Admin & HR (/admin).
+  const VIEW = window.HRMC_VIEW === 'staff' ? 'staff' : 'applicant';
+  const K_TOKEN = `hrmc_${VIEW}_token`, K_ME = `hrmc_${VIEW}_me`;
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
@@ -16,6 +18,7 @@
     signOut() { memToken = null; memMe = null; store.set(K_TOKEN, null); store.set(K_ME, null); },
     isHR() { return !!memMe && (memMe.role === 'h' || memMe.role === 'a'); },
     isAdmin() { return !!memMe && memMe.role === 'a'; },
+    view: VIEW,
     async post(path, body) {
       let res;
       try {

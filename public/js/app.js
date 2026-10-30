@@ -1,9 +1,11 @@
 /* =========================================================
    The app shell: sign-in, the top bar, the phone line to the
    Switchboard, and HR's pages other than the console.
+   Two views, each its own page and its own sign-in (js/api.js):
+     /admin      Admin & HR (admin.html): the staff sign-in, then
      HR          #/console (js/hr.js) · #/applicants · #/calls · #/call/<id>
      Admin       all of HR's pages, and #/admin (HR accounts, settings, status)
-     Applicant   #/phone (js/applicant.js), signed in once by their one-time link
+     /           the applicant's view (index.html): #/phone (js/applicant.js), signed in once by their one-time link
    ========================================================= */
 (function () {
   'use strict';
@@ -19,12 +21,16 @@
       // 🔗 An applicant's one-time link: ?invite=<code> signs them in (the link is then used up) and leaves the address bar.
       const q = new URLSearchParams(location.search);
       const invite = q.get('invite');
+      // An interview link always opens the applicant's view, never Admin & HR.
+      if (invite && API.view === 'staff') { location.replace('/?invite=' + encodeURIComponent(invite)); return; }
       if (invite) {
         history.replaceState(null, '', location.pathname + '#/phone');
         try { API.signOut(); API.signIn(await API.post('/api/auth/invite', { code: invite })); }
         catch (e) { return App.gate(e.message); }
       }
       let msg = ''; try { msg = sessionStorage.getItem('hrmc_msg') || ''; sessionStorage.removeItem('hrmc_msg'); } catch (e) {}
+      // Each view signs in its own people only: staff on /admin, applicants on /.
+      if (API.token && API.me && (API.view === 'staff') !== API.isHR()) API.signOut();
       if (!API.token) return App.gate(msg);
       try { App.cfg = await API.post('/api/config'); }
       catch (e) { return App.gate(e.status === 401 ? '' : e.message); }
@@ -35,15 +41,19 @@
     },
 
     /* ---------- sign-in ---------- */
+    // The sign-in page: on / the applicant's (no sign-in form: their link signs them in); on /admin, HR's and the admin's.
     gate(error) {
       document.getElementById('nav').innerHTML = '';
       document.getElementById('who').innerHTML = '';
-      $app().innerHTML = `<div class="gate"><div class="card">
-        <h1>LSH HR Mock Calls</h1>
-        ${error ? `<p class="badge red" style="display:block;padding:8px 10px;border-radius:10px">${esc(error)}</p>` : ''}
-        <p class="muted"><b>Applicants:</b> open the interview link HR sent you. It works <b>once</b>: it signs you in to your phone for this interview. Keep that browser tab open.</p>
-        <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
-        <h3>HR &amp; Admin sign-in</h3>
+      const err = error ? `<p class="badge red" style="display:block;padding:8px 10px;border-radius:10px;white-space:normal">${esc(error)}</p>` : '';
+      const logo = '<img class="gate-logo" src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397">';
+      if (API.view !== 'staff') {
+        $app().innerHTML = `<div class="gate"><div class="card">${logo}<h1>Your interview mock call</h1>${err}
+          <p>Open the <b>interview link</b> HR sent you, in Chrome or Edge on a computer, with a headset.</p>
+          <p class="muted small">The link works <b>once</b>: it signs you in to your phone for this interview. Keep that browser tab open until HR tells you the interview is over. If the link was already used or has expired, ask HR for a new one.</p></div></div>`;
+        return;
+      }
+      $app().innerHTML = `<div class="gate"><div class="card">${logo}<h1>Admin &amp; HR sign-in</h1>${err}
         <form id="hrForm">
           <label class="f" for="hrName">Username</label><input type="text" id="hrName" autocomplete="username" maxlength="40" required>
           <label class="f" for="hrPass">Password</label><input type="password" id="hrPass" autocomplete="current-password" required>

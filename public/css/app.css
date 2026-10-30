@@ -22,7 +22,8 @@ p { margin: 0 0 .7em; }
 /* ---------- top bar ---------- */
 .top { position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 18px; padding: 0 20px; height: 62px; background: var(--navy-deep); color: #fff; border-bottom: 3px solid var(--orange); }
 .brand { display: flex; align-items: center; gap: 14px; font-weight: 800; white-space: nowrap; }
-.brand .logo { height: 40px; width: auto; display: block; background: rgba(210, 223, 239, .5); border-radius: 8px; padding: 3px 6px; }
+.logo-tile { display: block; background: #fff; border-radius: 9px; padding: 4px 8px; flex: none; }
+.brand .logo { height: 36px; width: auto; display: block; }
 .brand small { font-weight: 600; color: #94a3b8; font-size: 12px; display: block; }
 .nav { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .nav a { color: #cbd5e1; text-decoration: none; padding: 7px 12px; border-radius: 9px; font-weight: 600; font-size: 14px; white-space: nowrap; }
@@ -127,6 +128,8 @@ table.t tr.click { cursor: pointer; } table.t tr.click:hover td { background: va
 /* ---------- sign-in ---------- */
 .gate { max-width: 440px; margin: 8vh auto; }
 .gate .card { padding: 26px; }
+.gate-logo { display: block; width: 190px; max-width: 70%; height: auto; margin: 0 auto 14px; }
+.gate h1 { text-align: center; }
 
 #toast { position: fixed; right: 16px; bottom: 16px; z-index: 99; display: flex; flex-direction: column; gap: 8px; max-width: min(420px, calc(100vw - 32px)); }
 .toast { background: var(--navy); color: #fff; padding: 10px 14px; border-radius: 10px; box-shadow: var(--shadow); font-size: 14px; transition: opacity .4s; }

@@ -12,12 +12,12 @@ async function main() {
   const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
   const hr = await (await browser.newContext({ permissions: ['microphone'], viewport: { width: 1400, height: 900 } })).newPage();
   hr.on('pageerror', (e) => console.log('HR page error:', e.message));
-  await hr.goto(BASE + '/');
+  await hr.goto(BASE + '/admin');
   await hr.fill('#hrName', 'Recruiter Two');
   await hr.fill('#hrPass', PASS);
   await hr.click('#hrForm button[type=submit]');
   await hr.waitForSelector('#presence');
-  await hr.goto(BASE + '/#/applicants');
+  await hr.goto(BASE + '/admin#/applicants');
   await hr.fill('#apName', 'Alex Rivera');
   await hr.click('#addAp button[type=submit]');
   await hr.waitForFunction(() => /Alex Rivera/.test(document.querySelector('#apList').textContent));
@@ -31,7 +31,7 @@ async function main() {
   await ap.waitForSelector('#kAv');
   step('applicant signed in');
 
-  await hr.goto(BASE + '/#/console');
+  await hr.goto(BASE + '/admin#/console');
   await hr.waitForSelector(`#presence [data-ext="${ext}"]`);
   await hr.click(`#presence [data-ext="${ext}"]`);
   await hr.fill('#cName', 'Maria Lopez');
@@ -67,7 +67,7 @@ async function main() {
   await ap.waitForFunction(() => /note was sent/.test(document.body.textContent));
   step('applicant hung up and submitted the note');
 
-  await hr.goto(BASE + '/#/calls');
+  await hr.goto(BASE + '/admin#/calls');
   await hr.waitForSelector('#callList tr[data-id]');
   await hr.locator('#callList tr', { hasText: 'Alex Rivera' }).first().click();
   await hr.waitForSelector('#loadRec', { timeout: 10000 });
