@@ -15,8 +15,9 @@
  *   TURN_KEY_ID, TURN_KEY_API_TOKEN
  *                        optional but recommended: Cloudflare Realtime TURN, so calls connect on
  *                        networks that block direct audio (strict home routers, mobile data, offices)
- *   GEMINI_API_KEY5 … GEMINI_API_KEY9 (and GEMINI_API_KEY, _KEY1, _KEY2)
- *                        optional: the 🤖 agent caller (without them, live calls only)
+ *   GEMINI_API_KEY20, GEMINI_API_KEY21
+ *                        optional: this site's own Gemini keys, used in turn, for the 🤖 agent caller (without a key, live calls only).
+ *                        GEMINI_API_KEY5 … GEMINI_API_KEY9 (and GEMINI_API_KEY, _KEY1, _KEY2), the shared LSH pool, are fallbacks.
  * Variables: RECORDING_DAYS (default 90), AI_MAX_MINUTES (default 8). How long a link and a session last is
  * set on 🛡 Admin → Settings (kept in the Switchboard).
  * Recordings are kept in the LSH_KV namespace under "hrmc:rec:" and expire on their own.

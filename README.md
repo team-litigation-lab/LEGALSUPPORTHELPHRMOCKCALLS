@@ -74,7 +74,8 @@ npx wrangler deploy
 | `ADMIN_PASSPHRASE` (secret) | **Required.** The admin's sign-in, and it signs the sign-in tokens. HR accounts are made on 🛡 Admin. |
 | `SESSION_SECRET` (secret) | Optional: signs the tokens instead (changing it signs everyone out). |
 | `TURN_KEY_ID`, `TURN_KEY_API_TOKEN` (secrets) | Recommended: Cloudflare Realtime TURN, so calls connect on networks that block direct audio. Without them, calls use STUN only. |
-| `GEMINI_API_KEY5` … `GEMINI_API_KEY9` (then `GEMINI_API_KEY`, `_KEY1`, `_KEY2`) (secrets) | Optional: the 🤖 agent caller (the same LSH Gemini key pool as Ring Channel). Without them, live calls only. |
+| `GEMINI_API_KEY20`, `GEMINI_API_KEY21` (secrets) | Optional: **this site's own Gemini keys**, for the 🤖 agent caller. They're interchangeable: each call starts on the next one, and when one reaches its limit the other takes over. Keys from two different Google Cloud projects give twice the allowance. Either one alone works. Without a Gemini key, live calls only. |
+| `GEMINI_API_KEY5` … `GEMINI_API_KEY9` (then `GEMINI_API_KEY`, `_KEY1`, `_KEY2`) (secrets) | Optional fallbacks: the shared LSH Gemini key pool (as on Ring Channel), used when `GEMINI_API_KEY20` and `_21` are busy or missing. |
 | `LSH_KV` (KV binding) | The recordings, under `hrmc:rec:`. `wrangler.json` points at the shared LSH KV namespace (the same one as Ring Channel, a separate key prefix); give it its own namespace if you want the interview recordings kept apart. |
 | `RECORDING_DAYS` | How long recordings are kept (default 90). |
 | `AI_MAX_MINUTES` | The longest an agent call can run (default 8). |

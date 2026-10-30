@@ -1,9 +1,12 @@
 /* Google Gemini: the voice behind the AI agent caller.
-   Keys: the same pool as the LSH Foundational Worker, GEMINI_API_KEY5 … GEMINI_API_KEY9,
-   then GEMINI_API_KEY, GEMINI_API_KEY1, GEMINI_API_KEY2. Limits are per Google Cloud project,
+   Keys: this site's own GEMINI_API_KEY20 and GEMINI_API_KEY21 first, interchangeably (each request
+   starts on the next one; one at its limit rests and the other takes over); then, if set here, the shared LSH pool
+   GEMINI_API_KEY5 … GEMINI_API_KEY9, then GEMINI_API_KEY, GEMINI_API_KEY1, GEMINI_API_KEY2. Limits are per Google Cloud project,
    so each key should come from its own project. Each request starts on the next key in turn;
    a key that hits its limit rests and the next one takes over.
    GEMINI_BASE (tests only) points the Worker at a stand-in for Google. */
+// This site's own keys, always tried first and taken in turn; the shared LSH pool (if set on this Worker) is the fallback.
+const OWN = ['GEMINI_API_KEY20', 'GEMINI_API_KEY21'];
 const POOL = ['GEMINI_API_KEY5', 'GEMINI_API_KEY6', 'GEMINI_API_KEY7', 'GEMINI_API_KEY8', 'GEMINI_API_KEY9'];
 const SPARE = ['GEMINI_API_KEY', 'GEMINI_API_KEY1', 'GEMINI_API_KEY2'];
 export const TEXT_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite'];
@@ -15,7 +18,7 @@ export const liveWsUrl = (env) => env.LIVE_WS_URL || LIVE_WS;
 
 export function keyNames(env) {
   const seen = new Set();
-  return [...POOL, ...SPARE].filter((n) => { const v = String(env[n] || '').trim(); if (!v || seen.has(v)) return false; seen.add(v); return true; });
+  return [...OWN, ...POOL, ...SPARE].filter((n) => { const v = String(env[n] || '').trim(); if (!v || seen.has(v)) return false; seen.add(v); return true; });
 }
 export const hasAI = (env) => keyNames(env).length > 0;
 
@@ -24,9 +27,9 @@ const rest = new Map();   // "<key>|<model>" → rest until
 const resting = (k, m) => Math.max(rest.get(k + '|*') || 0, rest.get(k + '|' + m) || 0) > Date.now();
 function keyOrder(env) {
   const names = keyNames(env);
-  const pool = names.filter((n) => POOL.includes(n)), spare = names.filter((n) => !POOL.includes(n));
-  const s = pool.length ? turn++ % pool.length : 0;
-  return [...pool.slice(s), ...pool.slice(0, s), ...spare];
+  const own = names.filter((n) => OWN.includes(n)), pool = names.filter((n) => POOL.includes(n)), spare = names.filter((n) => SPARE.includes(n));
+  const t = turn++, o = own.length ? t % own.length : 0, s = pool.length ? t % pool.length : 0;
+  return [...own.slice(o), ...own.slice(0, o), ...pool.slice(s), ...pool.slice(0, s), ...spare];
 }
 
 /* One generateContent request, tried model by model and key by key.
