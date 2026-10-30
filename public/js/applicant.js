@@ -119,7 +119,8 @@
           <li>Handle the call as you would a real one: greet the caller, find out what they need, use <b>Hold</b> or <b>Transfer</b> when it's right.</li>
           <li>Take the call note as you go (it appears here once you answer), and <b>submit</b> it after the call.</li>
         </ol>
-        <p class="small muted">Use Chrome or Edge on a computer. Allow the microphone when the browser asks.</p></div>`;
+        <p class="small muted">Use Chrome or Edge on a computer. Allow the microphone when the browser asks.</p></div>
+        ${App.cfg.briefing ? `<div class="card briefing">${App.briefingHtml(App.cfg.briefing)}<p class="small muted" style="margin-top:12px">Read this before the call: it stays here during the call too.</p></div>` : ''}`;
       return;
     }
     const fields = App.cfg.noteFields;
@@ -128,7 +129,8 @@
       <form id="noteForm">${fields.map((f) => `<label class="f" for="n_${f.k}">${esc(f.label)}</label>${f.type === 'textarea'
         ? `<textarea id="n_${f.k}" data-k="${f.k}" rows="3">${esc(p.note[f.k] || '')}</textarea>`
         : `<input type="text" id="n_${f.k}" data-k="${f.k}" value="${esc(p.note[f.k] || '')}">`}`).join('')}
-      ${done ? '<div class="row" style="margin-top:12px"><button class="btn primary" type="submit">📨 Submit the note</button></div>' : ''}</form></div>`;
+      ${done ? '<div class="row" style="margin-top:12px"><button class="btn primary" type="submit">📨 Submit the note</button></div>' : ''}</form></div>
+      ${App.cfg.briefing ? `<details class="card briefing"><summary style="cursor:pointer;font-weight:700">📄 Your briefing (what you know)</summary>${App.briefingHtml(App.cfg.briefing)}</details>` : ''}`;
     const form = box.querySelector('#noteForm');
     form.addEventListener('input', (ev) => { const k = ev.target.dataset.k; if (k) { p.note[k] = ev.target.value; sendNote(p); } });
     form.onsubmit = async (ev) => {

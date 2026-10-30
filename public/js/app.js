@@ -168,6 +168,51 @@
       const [c, t] = map[s] || ['', s];
       return `<span class="badge ${c}">${esc(t)}</span>`;
     },
+    /* 📋 The scoring matrix (src/rubric.js) as HR fills it in: A–I 1 to 5 each with the level's description and a
+       remark, the A–I average, J (the final assessment) and the interview notes. `rv` is kept as they type, so the
+       console can redraw without losing it. Only HR sees it. */
+    scorecard(box, callId, rv) {
+      rv.scores = rv.scores || {}; rv.remarks = rv.remarks || {};
+      const R = App.cfg.rubric || [];
+      const avg = () => { const v = R.filter((c) => !c.final && rv.scores[c.k]).map((c) => rv.scores[c.k]); return v.length ? (v.reduce((a, b) => a + b, 0) / v.length).toFixed(2) : '—'; };
+      const level = (c) => rv.scores[c.k] ? `<b>${rv.scores[c.k]}</b> – ${esc(c.levels[rv.scores[c.k]])}` : '<span class="muted">Not scored yet.</span>';
+      box.innerHTML = `<div class="sc">${R.map((c) => `<div class="sc-row ${c.final ? 'final' : ''}" data-k="${c.k}">
+          <div class="sc-head"><b>${c.k}. ${esc(c.name)}</b><span class="spacer"></span><span class="sc-btns">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" class="${rv.scores[c.k] === n ? 'on' : ''}" title="${esc(n + ' – ' + c.levels[n])}">${n}</button>`).join('')}</span></div>
+          ${c.desc ? `<div class="tiny muted">${esc(c.desc)}</div>` : ''}
+          ${c.final ? `<div class="sc-sum">Average of A–I: <b class="sc-avg">${avg()}</b> / 5</div>` : ''}
+          <div class="sc-desc small">${level(c)}</div>
+          <input type="text" class="sc-rem" data-k="${c.k}" maxlength="1500" placeholder="Remark (optional)" value="${esc(rv.remarks[c.k] || '')}"></div>`).join('')}
+        <label class="f" for="scNotes">Interview notes</label><textarea class="sc-notes" id="scNotes" rows="5">${esc(rv.notes || '')}</textarea>
+        <div class="row" style="margin-top:10px"><button class="btn primary sc-save" type="button">💾 Save the scorecard</button><span class="tiny muted sc-at">${rv.at ? `Saved ${esc(U.when(rv.at))} by ${esc(rv.by)}` : 'Only HR sees this.'}</span></div></div>`;
+      box.querySelectorAll('.sc-row').forEach((row) => {
+        const c = R.find((x) => x.k === row.dataset.k);
+        row.querySelectorAll('.sc-btns button').forEach((b) => { b.onclick = () => {
+          const n = Number(b.dataset.n);
+          rv.scores[c.k] = rv.scores[c.k] === n ? undefined : n;   // a second click clears it
+          row.querySelectorAll('.sc-btns button').forEach((x) => x.classList.toggle('on', Number(x.dataset.n) === rv.scores[c.k]));
+          row.querySelector('.sc-desc').innerHTML = level(c);
+          const a = box.querySelector('.sc-avg'); if (a) a.textContent = avg();
+        }; });
+      });
+      box.querySelectorAll('.sc-rem').forEach((i) => { i.oninput = () => { rv.remarks[i.dataset.k] = i.value; }; });
+      box.querySelector('.sc-notes').oninput = (e) => { rv.notes = e.target.value; };
+      box.querySelector('.sc-save').onclick = async () => {
+        try {
+          const r = await API.post('/api/call/update', { id: callId, review: { scores: rv.scores, remarks: rv.remarks, notes: rv.notes || '' } });
+          Object.assign(rv, r.call.review || {});
+          box.querySelector('.sc-at').textContent = `Saved ${U.when(rv.at)} by ${rv.by}`;
+          U.toast(rv.verdict ? `Saved: ${rv.verdict}.` : 'Saved.', 'ok');
+        } catch (e) { U.toast(e.message, 'error'); }
+      };
+    },
+    // 📄 The applicant's briefing sheet (the default scenario's): what they know before the call.
+    briefingHtml(b) {
+      if (!b || !(b.sections || []).length) return '';
+      return `<h2>📄 ${esc(b.title)}</h2>${b.sections.map((x) => `<h4 style="margin:12px 0 4px">${esc(x.title)}</h4>
+        ${x.text ? `<p class="small" style="margin:0">${esc(x.text)}</p>` : ''}
+        ${(x.items || []).length ? `<${x.ordered ? 'ol' : 'ul'} class="small" style="margin:0;padding-left:20px">${x.items.map((i) => `<li>${esc(i)}</li>`).join('')}</${x.ordered ? 'ol' : 'ul'}>` : ''}
+        ${x.note ? `<p class="small" style="margin:4px 0 0"><b>${esc(x.note)}</b></p>` : ''}`).join('')}`;
+    },
     inviteLink(code) { return `${location.origin}/?invite=${encodeURIComponent(code)}`; },
     async copy(text) { try { await navigator.clipboard.writeText(text); U.toast('Copied.', 'ok'); } catch (e) { prompt('Copy this:', text); } }
   };
@@ -241,15 +286,17 @@
       try { calls = (await API.post('/api/calls', applicantId ? { applicantId, limit: 500 } : { limit: 500 })).calls; } catch (e) { return U.toast(e.message, 'error'); }
       const box = el.querySelector('#callList');
       if (!calls.length) box.innerHTML = '<div class="empty">No calls yet.</div>';
-      else box.innerHTML = `<table class="t"><thead><tr><th>When</th><th>Applicant</th><th>Call</th><th>Status</th><th>Length</th><th>Score</th><th>Verdict</th><th></th></tr></thead><tbody>
+      else box.innerHTML = `<table class="t"><thead><tr><th>When</th><th>Applicant</th><th>Call</th><th>Status</th><th>Length</th><th>Final (J)</th><th>Assessment</th><th></th></tr></thead><tbody>
         ${calls.map((c) => `<tr class="click" data-id="${esc(c.id)}"><td class="small">${esc(U.when(c.createdAt))}</td><td><b>${esc(c.applicantName)}</b><div class="tiny muted">${esc(c.position || '')}</div></td>
           <td>${c.mode === 'ai' ? '<span class="badge violet">🤖 AGENT CALLER</span> ' : '<span class="badge blue">🎙 LIVE</span> '}${esc(c.title)}<div class="tiny muted">by ${esc(c.hr)}</div></td>
-          <td>${App.statusBadge(c.status)}</td><td class="mono">${c.talkMs ? U.dur(c.talkMs) : '—'}</td><td>${c.score != null ? c.score + ' / 5' : '—'}</td><td>${esc(c.verdict || '—')}</td>
+          <td>${App.statusBadge(c.status)}</td><td class="mono">${c.talkMs ? U.dur(c.talkMs) : '—'}</td><td>${c.scores && c.scores.J ? `<b>${c.scores.J}</b> / 5` : c.avg != null ? `${c.avg} / 5 <span class="tiny muted">(A–I avg)</span>` : '—'}${c.scores && c.scores.J && c.avg != null ? `<div class="tiny muted">A–I avg ${c.avg}</div>` : ''}</td><td>${esc(c.verdict || '—')}</td>
           <td>${c.recording ? '🎧' : ''}${c.noteSubmitted ? ' 📝' : ''}</td></tr>`).join('')}</tbody></table>`;
       box.querySelectorAll('tr[data-id]').forEach((tr) => { tr.onclick = () => App.nav('#/call/' + tr.dataset.id); });
       el.querySelector('#csv').onclick = () => {
-        const rows = [['When', 'Applicant', 'Position', 'Type', 'Call', 'HR', 'Status', 'Length (s)', 'Score (1-5)', 'Verdict']]
-          .concat(calls.map((c) => [new Date(c.createdAt).toISOString(), c.applicantName, c.position || '', c.mode === 'ai' ? 'Agent caller' : 'Live', c.title, c.hr, c.status, c.talkMs ? Math.round(c.talkMs / 1000) : '', c.score == null ? '' : c.score, c.verdict || '']));
+        const R = App.cfg.rubric || [];
+        const rows = [['When', 'Applicant', 'Position', 'Type', 'Call', 'HR', 'Status', 'Length (s)'].concat(R.map((x) => `${x.k}. ${x.name}`), ['A–I average', 'Final assessment'])]
+          .concat(calls.map((c) => [new Date(c.createdAt).toISOString(), c.applicantName, c.position || '', c.mode === 'ai' ? 'Agent caller' : 'Live', c.title, c.hr, c.status, c.talkMs ? Math.round(c.talkMs / 1000) : '']
+            .concat(R.map((x) => (c.scores || {})[x.k] || ''), [c.avg == null ? '' : c.avg, c.verdict || ''])));
         const csv = rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n');
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
@@ -278,20 +325,11 @@
             ${s.persona || s.opening || (s.goals || []).length ? `<div class="card"><h3>🎭 The caller</h3>${s.opening ? `<p><b>Opening:</b> ${esc(s.opening)}</p>` : ''}${s.persona ? `<div class="script">${esc(s.persona)}</div>` : ''}${(s.goals || []).length ? `<h4 style="margin-top:10px">What a good call does</h4><ul>${s.goals.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : ''}
           </div>
           <div>
-            <div class="card"><h3>🧑‍💼 HR assessment</h3><p class="tiny muted">Only HR sees this.</p>
-              <label class="f">Score (1–5)</label><div class="stars" id="stars">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" class="${rv.score === n ? 'on' : ''}">${n}</button>`).join('')}</div>
-              <label class="f" for="verdict">Verdict</label><select id="verdict"><option value="">—</option>${['Pass', 'Hold', 'Fail'].map((v) => `<option ${rv.verdict === v ? 'selected' : ''}>${v}</option>`).join('')}</select>
-              <label class="f" for="notes">Interview notes</label><textarea id="notes" rows="7">${esc(rv.notes || '')}</textarea>
-              <div class="row" style="margin-top:10px"><button class="btn primary" id="saveRv">💾 Save</button>${rv.at ? `<span class="tiny muted">Saved ${esc(U.when(rv.at))} by ${esc(rv.by)}</span>` : ''}</div></div>
+            <div class="card"><h3>📋 Scoring matrix</h3><div id="scBox"></div></div>
             ${c.mode === 'ai' ? `<div class="card"><h3>💬 Transcript</h3><div class="transcript">${App.transcriptHtml(c.transcript)}</div></div>` : ''}
           </div>
         </div>`;
-      let score = rv.score || null;
-      el.querySelectorAll('#stars button').forEach((b) => { b.onclick = () => { score = Number(b.dataset.n); el.querySelectorAll('#stars button').forEach((x) => x.classList.toggle('on', Number(x.dataset.n) === score)); }; });
-      el.querySelector('#saveRv').onclick = async () => {
-        try { await API.post('/api/call/update', { id, review: { score, verdict: el.querySelector('#verdict').value, notes: el.querySelector('#notes').value } }); U.toast('Saved.', 'ok'); }
-        catch (e) { U.toast(e.message, 'error'); }
-      };
+      App.scorecard(el.querySelector('#scBox'), id, Object.assign({}, rv));
       if (el.querySelector('#del')) el.querySelector('#del').onclick = async () => {
         if (!confirm('Delete this call and its recording? This can\'t be undone.')) return;
         try { await API.post('/api/call/delete', { id }); App.nav('#/calls'); } catch (e) { U.toast(e.message, 'error'); }

@@ -23,6 +23,7 @@
    ========================================================= */
 import { DurableObject } from 'cloudflare:workers';
 import { COMPANY, DIRECTORY, NOTE_FIELDS, scenarioById, openCall, callerIdOf, voiceOk } from './scenarios.js';
+import { cleanReview } from './rubric.js';
 
 const RING_MS = 45000;      // an unanswered call rings out after 45 seconds
 const GRACE_MS = 30000;     // a dropped phone has 30 seconds to reconnect before its call ends
@@ -585,7 +586,7 @@ export class Switchboard extends DurableObject {
     return rows.map((r) => {
       const d = JSON.parse(r.data || '{}');
       return { id: r.id, mode: r.mode, scenarioId: r.scenario_id, title: r.title, applicantId: r.applicant_id, applicantName: r.applicant_name, position: r.position, hr: r.hr,
-        status: r.status, createdAt: r.created_at, answeredAt: r.answered_at, endedAt: r.ended_at, score: r.score, verdict: (d.review && d.review.verdict) || '',
+        status: r.status, createdAt: r.created_at, answeredAt: r.answered_at, endedAt: r.ended_at, score: r.score, verdict: (d.review && d.review.verdict) || '', avg: d.review ? d.review.avg : null, scores: (d.review && d.review.scores) || {},
         talkMs: d.metrics && d.metrics.talkMs, ringMs: d.metrics && d.metrics.ringMs, recording: !!d.recording, noteSubmitted: !!d.noteSubmittedAt };
     });
   }
@@ -628,10 +629,9 @@ export class Switchboard extends DurableObject {
       }
     }
     if (who.role === 'h' && p.review) {
-      const v = p.review, sc = Math.round(Number(v.score));
-      d.review = { notes: String(v.notes || '').slice(0, 6000), score: sc >= 1 && sc <= 5 ? sc : null,
-        verdict: ['Pass', 'Hold', 'Fail'].includes(v.verdict) ? v.verdict : '', by: who.id, at: now() };
-      r.score = d.review.score;
+      // 📋 The scoring matrix (src/rubric.js): the call's score is J, the final assessment, else A–I's average.
+      d.review = Object.assign(cleanReview(p.review), { by: who.id, at: now() });
+      r.score = d.review.final != null ? d.review.final : d.review.avg;
     }
     this.save(r);
     if (freed) this.freePhones(r);

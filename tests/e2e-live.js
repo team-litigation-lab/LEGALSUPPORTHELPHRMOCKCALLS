@@ -88,10 +88,11 @@ async function main() {
   await hr.waitForSelector(`#presence [data-ext="${ext}"]`);
   await hr.click(`#presence [data-ext="${ext}"]`);
   if (!/Record the call: ON/.test(await hr.textContent('#kRec'))) throw new Error('recording should be on by default');
-  await hr.fill('#cName', 'Dana Price');
+  if ((await hr.inputValue('#scen')) !== 'lsh_intake_scheduling') throw new Error('the console should start on the intake scenario');
   await hr.click('#kCall');
   await ap.waitForSelector('#kAns', { timeout: 10000 });
-  if (!(await ap.textContent('#screen')).includes('DANA PRICE')) throw new Error('caller ID missing');
+  if (!(await ap.textContent('#screen')).includes('RACHEL MORGAN')) throw new Error('caller ID missing');
+  if (!/Tuesdays and Thursdays/.test(await ap.textContent('#side'))) throw new Error('the applicant should see their briefing');
   await ap.screenshot({ path: shots + '/01-applicant-ringing.png' });
   step('applicant phone rings with the caller ID');
 
@@ -138,10 +139,14 @@ async function main() {
   await ap.waitForFunction(() => /note was sent/.test(document.body.textContent));
   step('applicant submitted the note');
 
-  await hr.click('#qStars [data-n="4"]');
-  await hr.selectOption('#qVerdict', 'Pass');
-  await hr.fill('#qNotes', 'Clear greeting, good hold etiquette.');
-  await hr.click('#qSave');
+  // 📋 The scoring matrix: A–I and J, then save.
+  for (const [k, n] of [['A', 5], ['B', 4], ['C', 4], ['D', 4], ['E', 3], ['F', 4], ['G', 5], ['H', 4], ['I', 4], ['J', 4]]) await hr.click(`#scBox .sc-row[data-k="${k}"] [data-n="${n}"]`);
+  if (!/4\.11/.test(await hr.textContent('#scBox .sc-avg'))) throw new Error('A–I average should be 4.11');
+  await hr.fill('#scBox .sc-rem[data-k="G"]', 'Offered only Tuesday/Thursday slots.');
+  await hr.fill('#scNotes', 'Clear greeting, good hold etiquette.');
+  await hr.screenshot({ path: shots + '/02b-hr-scorecard.png', fullPage: true });
+  await hr.click('#scBox .sc-save');
+  await hr.waitForFunction(() => [...document.querySelectorAll('#toast .toast')].some((t) => /Nearly Client-Ready/.test(t.textContent)));
   await hr.goto(BASE + '/admin#/calls');
   await hr.waitForSelector('#callList tr[data-id]');
   await hr.click('#callList tr[data-id]');
@@ -149,7 +154,9 @@ async function main() {
   await hr.click('#loadRec');
   await hr.waitForSelector('#recBox audio');
   const page = await hr.textContent('main');
-  for (const want of ['Message to the case manager.', 'Clear greeting', 'Transfers: Supervisor (no-answer)']) if (!page.includes(want)) throw new Error('call page is missing: ' + want);
+  if (!/Nearly Client-Ready/.test(await hr.textContent('#scBox'))) throw new Error('the call page lost the scorecard');
+  if ((await hr.inputValue('#scBox .sc-rem[data-k="G"]')) !== 'Offered only Tuesday/Thursday slots.') throw new Error('the remark was not kept');
+  for (const want of ['Message to the case manager.', 'Clear greeting', 'Transfers: Attorney (no-answer)']) if (!page.includes(want)) throw new Error('call page is missing: ' + want);
   await hr.screenshot({ path: shots + '/03-hr-call-log.png', fullPage: true });
   step('call log shows the note, the score, the transfer and the recording');
 

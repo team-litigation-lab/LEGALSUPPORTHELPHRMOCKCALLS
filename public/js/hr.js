@@ -29,6 +29,8 @@
     busy() { return !!(HR.t && ['placing', 'ringing', 'connecting', 'live'].includes(HR.t.status)); }
   };
   try { Object.assign(HR.setup, JSON.parse(localStorage.getItem(SETUP_KEY) || '{}')); } catch (e) {}
+  // A console that never picked a scenario starts on the first one: the call the applicant's briefing is for.
+  if (HR.setup.scenarioId === undefined || HR.setup.scenarioId === '') HR.setup.scenarioPicked || (HR.setup.scenarioId = 'lsh_intake_scheduling');
   const saveSetup = () => { try { localStorage.setItem(SETUP_KEY, JSON.stringify(HR.setup)); } catch (e) {} };
   let el = null;
   const on = () => el && document.body.contains(el) && App.route.name === 'console';
@@ -78,7 +80,7 @@
     </div>`;
     App.audioCheck(el.querySelector('#audioBox'));
     const bind = (id, k, ev, val) => { const x = el.querySelector('#' + id); x.addEventListener(ev || 'input', () => { HR.setup[k] = val ? val(x) : x.value; saveSetup(); renderScreen(); }); };
-    bind('scen', 'scenarioId', 'change'); bind('cName', 'callerName'); bind('cNum', 'callerNumber');
+    bind('scen', 'scenarioId', 'change'); el.querySelector('#scen').addEventListener('change', () => { HR.setup.scenarioPicked = true; saveSetup(); }); bind('cName', 'callerName'); bind('cNum', 'callerNumber');
     bind('withhold', 'withhold', 'change', (x) => x.checked);
     bind('persona', 'persona'); bind('opening', 'opening'); bind('gender', 'gender', 'change'); bind('voice', 'voice', 'change');
     el.querySelector('#aiRefresh').onclick = loadAi;
@@ -183,19 +185,9 @@
           <div class="row"><button class="btn green" data-tx="connected">Picks up (call ends)</button><button class="btn" data-tx="no-answer">No answer</button><button class="btn" data-tx="voicemail">Voicemail</button></div></div>` : ''}
       ${t && (s.persona || s.opening || (s.goals || []).length) ? `<div class="card"><h3>🎭 You are the caller</h3>${s.opening ? `<p><b>Opening:</b> ${esc(s.opening)}</p>` : ''}${s.persona ? `<div class="script">${esc(s.persona)}</div>` : ''}${(s.goals || []).length ? `<h4 style="margin-top:10px">What a good call does</h4><ul class="small">${s.goals.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : ''}
       <div class="card"><h3>📝 ${esc((c.applicant || {}).name || '')}'s note ${t ? '<span class="badge red">LIVE</span>' : ''}</h3><div id="liveNote">${App.noteHtml(c.note)}</div></div>
-      <div class="card"><div class="row"><h3 style="margin:0">🧑‍💼 Score this call</h3><span class="spacer"></span><a class="btn small" href="#/call/${esc(c.callId)}">Open call ↗</a></div>
-        <label class="f">Score (1–5)</label><div class="stars" id="qStars">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" class="${c.score === n ? 'on' : ''}">${n}</button>`).join('')}</div>
-        <label class="f" for="qVerdict">Verdict</label><select id="qVerdict"><option value="">—</option>${['Pass', 'Hold', 'Fail'].map((v) => `<option ${c.verdict === v ? 'selected' : ''}>${v}</option>`).join('')}</select>
-        <label class="f" for="qNotes">Interview notes</label><textarea id="qNotes" rows="5">${esc(c.notes || '')}</textarea>
-        <div class="row" style="margin-top:10px"><button class="btn primary" id="qSave">💾 Save</button><span class="tiny muted">Only HR sees this.</span></div></div>`;
+      <div class="card"><div class="row"><h3 style="margin:0">📋 Scoring matrix</h3><span class="spacer"></span><a class="btn small" href="#/call/${esc(c.callId)}">Open call ↗</a></div><div id="scBox" style="margin-top:8px"></div></div>`;
     box.querySelectorAll('[data-tx]').forEach((b) => { b.onclick = () => { App.board.send({ t: 'transfer-result', callId: t.callId, result: b.dataset.tx }); t.transfer = null; renderLive(); }; });
-    box.querySelectorAll('#qStars button').forEach((b) => { b.onclick = () => { c.score = Number(b.dataset.n); box.querySelectorAll('#qStars button').forEach((x) => x.classList.toggle('on', Number(x.dataset.n) === c.score)); }; });
-    box.querySelector('#qNotes').oninput = (e) => { c.notes = e.target.value; };
-    box.querySelector('#qVerdict').onchange = (e) => { c.verdict = e.target.value; };
-    box.querySelector('#qSave').onclick = async () => {
-      try { await API.post('/api/call/update', { id: c.callId, review: { score: c.score, verdict: c.verdict || '', notes: c.notes || '' } }); U.toast('Saved.', 'ok'); }
-      catch (e) { U.toast(e.message, 'error'); }
-    };
+    App.scorecard(box.querySelector('#scBox'), c.callId, c.review = c.review || {});
   }
   function renderNote() { const n = on() && el.querySelector('#liveNote'); const c = HR.t || HR.last; if (n && c) n.innerHTML = App.noteHtml(c.note); }
 

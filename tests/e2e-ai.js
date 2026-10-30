@@ -36,6 +36,7 @@ async function main() {
   await hr.goto(BASE + '/admin#/console');
   await hr.waitForSelector(`#presence [data-ext="${ext}"]`);
   await hr.click(`#presence [data-ext="${ext}"]`);
+  await hr.selectOption('#scen', '');   // an open call: the AI plays the persona typed below
   await hr.fill('#cName', 'Maria Lopez');
   await hr.evaluate(() => { document.querySelector('#aiSetup').open = true; });
   await hr.fill('#persona', 'Maria Lopez, a client checking on her next appointment. Polite but in a hurry. ZEBRA-MARKER');

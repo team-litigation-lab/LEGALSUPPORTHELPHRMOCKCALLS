@@ -59,11 +59,37 @@ Each view keeps its own sign-in in the browser, so an admin can open a test appl
 
 **Reliability:** an unanswered call rings out after 45 seconds (*Missed*); a phone that loses its connection has 30 seconds to come back; reloading either page mid-call reconnects it (the applicant clicks **🔊 Reconnect the call**).
 
-## Scenarios (to be added)
+## 📋 The scoring matrix
 
-`SCENARIOS` in `src/scenarios.js` is **empty for now**: the HR scenarios will be added there. Until then every call is an *open call*: HR plays any caller live, or types the agent caller's persona on the console. The shape of a scenario is documented at the top of that file (title, caller, opening, persona, goals, extensions that don't pick up a transfer, live-only or AI). Once added, they appear in the console's **Scenario** list; HR sees the persona and goals as their script on a live call, and the agent caller plays them.
+HR scores every call on the **HR mock-call scoring matrix** (`src/rubric.js`), on the console during or after the call, or on the call's page:
 
-The same file holds the **company** name and line, the **transfer directory** (Supervisor 201, Case Manager 301, Billing 401, Intake Team 501) and the **note fields** the applicant fills in. Change them there.
+| | Criterion |
+|---|---|
+| A | Professional Tone |
+| B | Clarity of Speech |
+| C | Composure |
+| D | Basic Call Structure |
+| E | Probing Skills |
+| F | Active Listening |
+| G | Attention to Detail (Pre-Provided Information & Availability Verification) |
+| H | Confidence in Delivery |
+| I | Call Control |
+| **J** | **Final Assessment**: 5 Excellent / Fully Client-Ready · 4 Above Expectations / Nearly Client-Ready · 3 Meets Basic Expectations / Trainable · 2 Below Expectations / Needs Significant Coaching · 1 Not Ready / Unsatisfactory Performance |
+
+Each is scored 1–5; the chosen level's full description shows under it (hover a number to read any level), with an optional remark. The **A–I average** is worked out as you score. The call's score is **J**; its label is the call's assessment in 🗂 Call Logs. **⬇ Export CSV** has every criterion, the A–I average and J. Only HR sees the scorecard.
+
+## Scenarios
+
+`SCENARIOS` in `src/scenarios.js`. The first is the default: the console starts on it, and its **briefing** is the sheet the applicant reads on their phone.
+
+**Initial Client Intake & Scheduling** (from *Mock Call Scenario for New Hire Interview*):
+- **The applicant's briefing** (shown on their phone before and during the call, word for word from the document): the purpose, their role and task, the call type, what they know (Legal Support Help, Personal Injury / Civil Litigation, 1290 S. Jones Blvd. Las Vegas, NV 89146, recruitment@legalsupporthelp.com, consults by phone only, Tuesdays and Thursdays, 9:30 AM – 3:00 PM, 30 minutes max, the attorney calls the client), what to obtain, what they're assessed on, what not to do, and the 5–10 minute duration.
+- **The caller** (HR's script on a live call, and what the 🤖 agent caller plays; the applicant never sees it): **Rachel Morgan**, (702) 555-0148, rachel.morgan@email.com, rear-ended at a red light on West Sahara Avenue, Las Vegas, NV on Saturday, October 18; neck and back pain; hasn't spoken to another attorney. Emotional and talkative at first. She asks for the attorney right now, whether to give the other driver's insurance a recorded statement (legal advice), whether she has a good case and how much she'd get (a guarantee), and for Monday after 5 PM, then Friday morning, before accepting Thursday at 1:00 PM (or Tuesday at 2:30 PM). *This caller was written for the scenario; the document describes only the applicant's side. Change it in `src/scenarios.js`.*
+- **What a good call does** (HR's checklist), from the document's tasks and challenges.
+
+The **call note** the applicant fills in is the scenario's intake: full name, contact number, email, brief description, date of incident, city/state, spoken to another attorney, the consultation scheduled, and message / next steps. The **transfer directory**: Attorney 201 (consultations by appointment only: the scenario says the attorney doesn't pick up), Paralegal 301, Office Manager 401.
+
+To add a scenario, copy the shape at the top of `src/scenarios.js`. A call can still be an **open call** (Scenario: — Open call —): HR plays any caller live, or types the agent caller's persona.
 
 ## Deploy (Cloudflare)
 

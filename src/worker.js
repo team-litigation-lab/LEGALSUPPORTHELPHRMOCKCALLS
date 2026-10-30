@@ -24,7 +24,8 @@
  */
 import { Switchboard } from './switchboard.js';
 import { makeToken, readToken, readTokenString, safeEqual, secretOf, hashPassword, checkPassword } from './auth.js';
-import { COMPANY, DIRECTORY, NOTE_FIELDS, AI_VOICES, listScenarios } from './scenarios.js';
+import { COMPANY, DIRECTORY, NOTE_FIELDS, AI_VOICES, listScenarios, applicantBriefing } from './scenarios.js';
+import { RUBRIC } from './rubric.js';
 import { hasAI, generate, liveToken } from './gemini.js';
 import { callerPrompt, liveSetup } from './prompts.js';
 
@@ -150,7 +151,7 @@ export default {
       if (path === '/api/config') {
         const st = await sb.getSettings();
         return json({
-          me: { role: me.role, admin, id: me.id, name: me.name, position: me.position || '', ext: me.ext || '' }, company: COMPANY, directory: DIRECTORY, noteFields: NOTE_FIELDS,
+          me: { role: me.role, admin, id: me.id, name: me.name, position: me.position || '', ext: me.ext || '' }, company: COMPANY, directory: DIRECTORY, noteFields: NOTE_FIELDS, briefing: applicantBriefing(), rubric: hr ? RUBRIC : [],
           scenarios: hr ? listScenarios() : [], voices: hr ? AI_VOICES : [],
           features: { ai: hasAI(env), recordings: !!env.LSH_KV, aiMinutes: aiMinutes(env), turn: !!(env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN), linkHours: st.linkHours, sessionHours: st.sessionHours, recordingDays: recDays(env) }
         });
