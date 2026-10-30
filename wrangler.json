@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lsh-hr-mock-calls",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SWITCHBOARD",
+        "class_name": "Switchboard"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "Switchboard"
+      ]
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "LSH_KV",
+      "id": "b121aa911590471bbad351d03274d7f4"
+    }
+  ],
+  "vars": {
+    "RECORDING_DAYS": "90",
+    "AI_MAX_MINUTES": "8",
+    "INVITE_DAYS": "7"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

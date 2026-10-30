@@ -1,0 +1,5 @@
+# Local secrets for `npx wrangler dev` (copy to .dev.vars; .dev.vars is git-ignored)
+ADMIN_PASSPHRASE=change-me
+# TURN_KEY_ID=
+# TURN_KEY_API_TOKEN=
+# GEMINI_API_KEY5=

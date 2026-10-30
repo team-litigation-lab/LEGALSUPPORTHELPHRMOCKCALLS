@@ -1,0 +1,14 @@
+{
+  "name": "lsh-hr-mock-calls",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LSH HR Mock Calls: a browser VOIP phone for HR interview mock calls, with live and AI agent callers (Cloudflare Worker + Durable Object + WebRTC).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4.144.0"
+  }
+}

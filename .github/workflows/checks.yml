@@ -1,0 +1,35 @@
+# Runs on every pull request and every push to main. Nothing here deploys.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Build and browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Install Wrangler, Playwright and Chromium
+        run: |
+          npm install --no-audit --no-fund
+          npm install --prefix tests --no-audit --no-fund
+          tests/node_modules/.bin/playwright install --with-deps chromium
+      - name: Build the Worker without deploying (wrangler dry run)
+        run: npm run check
+      - name: A live call and an agent-caller call (two browsers, local wrangler dev)
+        run: NODE_PATH=tests/node_modules bash tests/run.sh
