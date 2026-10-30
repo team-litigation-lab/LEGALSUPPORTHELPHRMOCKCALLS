@@ -11,14 +11,15 @@ It is cloned from **LSH Ring Channel**'s phone system (the Switchboard, the WebR
 
 Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudflare Worker with one Durable Object (the Switchboard). The audio goes straight between the two browsers over WebRTC, through a TURN relay when a network blocks direct audio.
 
-## Two views, each its own page
+## The main page and the two views
 
-| Address | Who | What it shows |
-|---|---|---|
-| **`/admin`** | 🛡 Admin and 🧑‍💼 HR | The **Admin & HR sign-in**, then 🎛 Console, 👥 Applicants, 🗂 Call Logs and (admin) 🛡 Admin. Kept out of search engines. |
-| **`/`** (the main address) | 👤 Applicants | Only the applicant's phone. **No sign-in form**: their one-time link (`/?invite=…`) signs them in. Without a link it says to open the link HR sent. |
+**The main page (`/`)** has both ways in, side by side:
+- **👤 Applicant:** the interview code and their full name. With their **one-time link** (`/?invite=…`) they only see **"Welcome to your interview — your full name — Enter →"**: they type their name and they're on their phone.
+- **🧑‍💼 HR & Admin:** username and password (the admin: any name and the admin passphrase). Signing in here goes on to `/admin`.
 
-Each view keeps its own sign-in in the browser, so an admin can open a test applicant link on the same computer without being signed out of `/admin`. An interview link opened on `/admin` goes to `/`. `public/admin.html` and `public/index.html` are the two pages; they share the same scripts (`window.HRMC_VIEW` says which view it is).
+**`/admin`** is the Admin & HR view on its own: its sign-in, then 🎛 Console, 👥 Applicants, 🗂 Call Logs and (admin) 🛡 Admin. Kept out of search engines.
+
+Each view keeps its own sign-in in the browser, so an admin can open a test applicant link on the same computer without being signed out of `/admin`. An interview link opened on `/admin` goes to `/`. `public/index.html` and `public/admin.html` are the two pages; they share the same scripts (`window.HRMC_VIEW` says which view it is).
 
 ## Who signs in
 
@@ -34,7 +35,8 @@ Each view keeps its own sign-in in the browser, so an admin can open a test appl
 - **🩺 Status:** the TURN relay, the agent caller's Gemini keys, recordings, and the counts (applicants, phones open, HR online, calls, calls not scored).
 
 **🔗 One-time access**
-- Each applicant gets **one link, good for one sign-in**. The first open signs them in to their phone and **uses the link up**: opened again (in any browser, by anyone) it says *already used*. Reloading their own page keeps their session.
+- Each applicant gets **one link, good for one sign-in**. Opening it asks for their **full name**; sending it signs them in to their phone and **uses the link up**: used again (in any browser, by anyone) it says *already used*. Opening the link alone doesn't use it, so a link preview in an email or chat app can't. Reloading their own page keeps their session.
+- The name they type is the one HR sees. HR's name for them is optional when adding them; when it differs, 👥 Applicants shows *invited as …*.
 - The session ends after the hours set on ⚙️ Settings, when HR presses **⛔ End session**, or when HR makes **↻ New link** (which also cancels the old one). The applicant is signed out at once.
 - 👥 Applicants shows each link's state: *Not opened yet* (with Copy), *In session*, *Used*, *Expired* or *Ended*. The link is only shown while it is unused.
 
@@ -42,7 +44,7 @@ Each view keeps its own sign-in in the browser, so an admin can open a test appl
 
 **HR**
 1. Opens **`/admin`** and signs in with their **username and password** (or the admin with the admin passphrase).
-2. **👥 Applicants → ＋ Add & get link:** the applicant's name and the position. They get a **desk extension** (7001, 7002, …) and a **one-time link**, copied to the clipboard to send them.
+2. **👥 Applicants → ＋ Add & get link:** the position, and the applicant's name if you like (they type theirs when they open the link). They get a **desk extension** (7001, 7002, …) and a **one-time link**, copied to the clipboard to send them.
 3. **🎛 Console:** the applicants whose phones are open are on the left. Click one (or dial their extension on the keypad), then:
    - **📞 Call (live)**: their phone rings; once they answer, you are the caller. Set the **Caller ID** name and number they see (or **🙈 Hide caller ID**).
    - **🤖 Agent caller**: the AI rings their phone and plays the caller. Under **🤖 Agent caller setup**, type who the AI plays (a persona), an optional opening line, and the voice. **👂 Follow** shows the conversation and the note live; **⏹** ends it.
@@ -51,7 +53,7 @@ Each view keeps its own sign-in in the browser, so an admin can open a test appl
 6. **🗂 Call Logs:** every call, with the recording (▶ play, ⬇ download), the note, the transcript (agent calls), the score and notes, and **⬇ Export CSV**.
 
 **Applicant**
-1. Opens the one-time link in Chrome or Edge on a computer, with a headset, and allows the microphone. The link signs them in to **☎ My phone** for this interview, leaves the address bar, and can't be used again.
+1. Opens the one-time link in Chrome or Edge on a computer, with a headset, **types their full name** and presses **Enter →**. That signs them in to **☎ My phone** for this interview; the link can't be used again. (Or, on the main page, they type the interview code and their name.) They allow the microphone when the browser asks.
 2. Stays **● Available**. When the phone rings they see the caller ID and **📞 Answer**.
 3. On the call: **Mute**, **⏸ Hold** (the caller hears hold music), **↪ Transfer** (to an extension in the directory), **🔊 Speaker**, **Hang up**, and the **📝 call note**.
 4. After the call they finish the note and **📨 Submit** it. Applicants never see HR's scores or notes, nor the call logs.

@@ -124,12 +124,14 @@ export default {
         }
         return json({ error: u && u.disabled ? 'This account is disabled. Ask the admin.' : 'Incorrect username or password' }, 401);
       }
-      // 🔗 The applicant's one-time link (?invite=<code>): the first open signs them in for one session.
+      // 🔗 The applicant's one-time link (?invite=<code>, or the code typed) and the name they type: one session, once.
       if (path === '/api/auth/invite') {
         if (!secretOf(env)) return json({ error: 'The phone system isn\'t set up yet.' }, 501);
-        const { code } = await request.json().catch(() => ({}));
+        const { code, name } = await request.json().catch(() => ({}));
+        const n = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+        if (n.length < 2) return json({ error: 'Type your full name.' }, 400);
         await new Promise((r) => setTimeout(r, 300));
-        const res = await board(env).redeemInvite(String(code || '').trim().slice(0, 40));
+        const res = await board(env).redeemInvite(String(code || '').trim().toLowerCase().slice(0, 40), n);
         if (res.error) return json({ error: res.error, code: res.code || '' }, res.status || 400);
         const a = res.applicant;
         const hours = Math.max(1, (a.session_exp - Date.now()) / 3600000);
@@ -163,8 +165,7 @@ export default {
       if (path === '/api/applicants') { if (!hr) return hrOnly(); return json({ applicants: await sb.listApplicants() }); }
       if (path === '/api/applicants/create') {
         if (!hr) return hrOnly();
-        const name = String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 60);
-        if (!name) return json({ error: 'Type the applicant\'s name.' }, 400);
+        const name = String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 60);   // optional: the applicant types theirs
         return json({ applicant: await sb.createApplicant(name, String(body.position || '').trim().slice(0, 60), me.name) });
       }
       if (path === '/api/applicants/renew') { if (!hr) return hrOnly(); return json({ applicant: await sb.renewInvite(String(body.id || '')) }); }

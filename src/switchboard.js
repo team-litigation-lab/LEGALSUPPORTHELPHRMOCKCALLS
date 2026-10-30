@@ -51,6 +51,8 @@ export class Switchboard extends DurableObject {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS applicants (id TEXT PRIMARY KEY, name TEXT, position TEXT, ext TEXT, invite TEXT, invite_exp INTEGER, invite_used INTEGER,
       session TEXT, session_exp INTEGER, created_by TEXT, created_at INTEGER, last_seen INTEGER, archived INTEGER DEFAULT 0)`);
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS applicants_by_ext ON applicants (ext)');
+    // The name HR invited them under; `name` is the one the applicant types when they open their link.
+    if (!this.sql.exec(`SELECT name FROM pragma_table_info('applicants') WHERE name = 'invited_as'`).toArray().length) this.sql.exec('ALTER TABLE applicants ADD COLUMN invited_as TEXT');
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS applicants_by_invite ON applicants (invite)');
     this.sql.exec(`CREATE TABLE IF NOT EXISTS hr (name TEXT PRIMARY KEY, ext TEXT, created_at INTEGER, last_seen INTEGER)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS calls (id TEXT PRIMARY KEY, mode TEXT, scenario_id TEXT, title TEXT, applicant_id TEXT, applicant_name TEXT, position TEXT, hr TEXT,
@@ -468,13 +470,13 @@ export class Switchboard extends DurableObject {
   /* =========================================================
      Called by the Worker (RPC). Identity is already checked there.
      ========================================================= */
-  // 🔗 HR invites an applicant: a name, the position, a desk extension and a one-time sign-in link.
+  // 🔗 HR invites an applicant: a name (optional: the applicant types theirs), the position, a desk extension and a one-time link.
   createApplicant(name, position, by) {
     const id = 'ap_' + crypto.randomUUID().replace(/-/g, '').slice(0, 10);
     const top = this.sql.exec('SELECT MAX(CAST(ext AS INTEGER)) AS n FROM applicants').toArray()[0].n;
     const ext = String(Math.max(APPLICANT_EXT, Number(top) || 0) + 1);
-    this.sql.exec('INSERT INTO applicants (id, name, position, ext, invite, invite_exp, created_by, created_at, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
-      id, name, position, ext, inviteCode(), now() + this.getSettings().linkHours * 3600000, String(by || ''), now());
+    this.sql.exec('INSERT INTO applicants (id, name, invited_as, position, ext, invite, invite_exp, created_by, created_at, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)',
+      id, name || `Applicant ${ext}`, name, position, ext, inviteCode(), now() + this.getSettings().linkHours * 3600000, String(by || ''), now());
     return this.applicantView(this.applicant(id));
   }
   // A new link: the old one (used or not) stops working, and any session it opened ends.
@@ -485,16 +487,17 @@ export class Switchboard extends DurableObject {
     this.kick(id);
     return this.applicantView(this.applicant(id));
   }
-  // The link works once: the first open starts the applicant's session (getSettings().sessionHours) and burns the link.
-  // Reloading the page keeps the session (the browser holds it); opening the link again doesn't.
-  redeemInvite(code) {
+  // The link works once: the applicant types their name, which starts their session (getSettings().sessionHours) and
+  // burns the link. Opening the link only shows the name form, so a link preview in an email or chat app doesn't use it.
+  // Reloading the page keeps the session (the browser holds it); the link again doesn't.
+  redeemInvite(code, name) {
     const a = code ? this.sql.exec('SELECT * FROM applicants WHERE invite = ?', String(code)).toArray()[0] : null;
     if (!a) return { error: 'This interview link isn\'t valid. Ask HR for a new one.', status: 404 };
     if (a.archived) return { error: 'This interview link was closed. Ask HR for a new one.', status: 403 };
     if (a.invite_used) return { error: 'This interview link was already used. It works only once: ask HR for a new one.', status: 403, code: 'used' };
     if (now() > a.invite_exp) return { error: 'This interview link has expired. Ask HR for a new one.', status: 403 };
     const session = crypto.randomUUID().replace(/-/g, '').slice(0, 16), exp = now() + this.getSettings().sessionHours * 3600000;
-    this.sql.exec('UPDATE applicants SET invite_used = ?, session = ?, session_exp = ?, last_seen = ? WHERE id = ?', now(), session, exp, now(), a.id);
+    this.sql.exec('UPDATE applicants SET name = ?, invite_used = ?, session = ?, session_exp = ?, last_seen = ? WHERE id = ?', name, now(), session, exp, now(), a.id);
     return { applicant: this.applicant(a.id) };
   }
   // The applicant's session is still the one their link opened (not ended by a new link, a closed link or time).
@@ -508,7 +511,7 @@ export class Switchboard extends DurableObject {
     if (!a) return null;
     const t = now();
     const link = a.archived ? 'closed' : a.invite_used ? (a.session && a.session_exp > t ? 'in-session' : 'used') : a.invite_exp < t ? 'expired' : 'unused';
-    return { id: a.id, name: a.name, position: a.position, ext: a.ext, createdBy: a.created_by || '', createdAt: a.created_at, lastSeen: a.last_seen, archived: !!a.archived,
+    return { id: a.id, name: a.name, invitedAs: a.invited_as || '', position: a.position, ext: a.ext, createdBy: a.created_by || '', createdAt: a.created_at, lastSeen: a.last_seen, archived: !!a.archived,
       link, invite: link === 'unused' ? a.invite : '', inviteExp: a.invite_exp, usedAt: a.invite_used || null, sessionExp: a.session_exp || null, calls: a.calls, avg: a.avg };
   }
   listApplicants() {

@@ -28,6 +28,8 @@ async function main() {
   const ap = await (await browser.newContext({ permissions: ['microphone'] })).newPage();
   ap.on('pageerror', (e) => console.log('Applicant page error:', e.message));
   await ap.goto(link);
+  await ap.fill('#apEnterName', 'Alex Rivera');
+  await ap.click('#enterForm button[type=submit]');
   await ap.waitForSelector('#kAv');
   step('applicant signed in');
 

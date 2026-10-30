@@ -27,14 +27,19 @@ async function main() {
   await adm.screenshot({ path: shots + '/00-admin.png' });
   step('admin signed in and made an HR account');
 
-  // The applicant's view (/) has no staff sign-in at all.
+  // The main page (/) has both: the applicant's entry (code and name) and the HR & Admin sign-in, which goes on to /admin.
   const plain = await (await browser.newContext()).newPage();
   await plain.goto(BASE + '/');
-  await plain.waitForFunction(() => /interview link/.test(document.body.textContent));
-  if (await plain.$('#hrForm')) throw new Error('the applicant view shows the staff sign-in');
-  await plain.screenshot({ path: shots + '/00-applicant-gate.png' });
+  await plain.waitForSelector('#apCode');
+  await plain.waitForSelector('#hrForm');
+  await plain.screenshot({ path: shots + '/00-main-page.png' });
+  await plain.fill('#hrName', 'Site Admin');
+  await plain.fill('#hrPass', PASS);
+  await plain.click('#hrForm button[type=submit]');
+  await plain.waitForURL(/\/admin/);
+  await plain.waitForSelector('#presence');
   await plain.context().close();
-  step('the applicant view has no staff sign-in');
+  step('the main page has both entries; a staff sign-in there opens /admin');
 
   const ctx = (await browser.newContext({ permissions: ['microphone'], viewport: { width: 1400, height: 900 } }));
   const hr = await ctx.newPage();
@@ -62,13 +67,19 @@ async function main() {
   const ap = await (await browser.newContext({ permissions: ['microphone'], viewport: { width: 1200, height: 860 } })).newPage();
   ap.on('pageerror', (e) => console.log('Applicant page error:', e.message));
   await ap.goto(link);
-  await ap.waitForSelector('#kAv');
+  await ap.waitForSelector('#apEnterName');
   if (new URL(ap.url()).search) throw new Error('the invite code stayed in the address bar');
-  step('applicant signed in by the link');
+  await ap.screenshot({ path: shots + '/00-applicant-name.png' });
+  await ap.fill('#apEnterName', 'Jamie Cruz');
+  await ap.click('#enterForm button[type=submit]');
+  await ap.waitForSelector('#kAv');
+  step('applicant opened the link and typed their name');
 
   // One-time access: the same link, opened again anywhere, doesn't sign in.
   const again = await (await browser.newContext()).newPage();
   await again.goto(link);
+  await again.fill('#apEnterName', 'Someone Else');
+  await again.click('#enterForm button[type=submit]');
   await again.waitForFunction(() => /already used/.test(document.body.textContent));
   await again.context().close();
   await ap.reload();

@@ -18,16 +18,13 @@
     isAdmin() { return API.isAdmin(); },
 
     async boot() {
-      // 🔗 An applicant's one-time link: ?invite=<code> signs them in (the link is then used up) and leaves the address bar.
+      // 🔗 An applicant's one-time link: ?invite=<code> leaves the address bar at once, and the page asks for their name.
+      // The link is used up only when they send it (so a link preview in an email or chat app doesn't use it).
       const q = new URLSearchParams(location.search);
       const invite = q.get('invite');
       // An interview link always opens the applicant's view, never Admin & HR.
       if (invite && API.view === 'staff') { location.replace('/?invite=' + encodeURIComponent(invite)); return; }
-      if (invite) {
-        history.replaceState(null, '', location.pathname + '#/phone');
-        try { API.signOut(); API.signIn(await API.post('/api/auth/invite', { code: invite })); }
-        catch (e) { return App.gate(e.message); }
-      }
+      if (invite) { history.replaceState(null, '', location.pathname); API.signOut(); return App.gate('', invite); }
       let msg = ''; try { msg = sessionStorage.getItem('hrmc_msg') || ''; sessionStorage.removeItem('hrmc_msg'); } catch (e) {}
       // Each view signs in its own people only: staff on /admin, applicants on /.
       if (API.token && API.me && (API.view === 'staff') !== API.isHR()) API.signOut();
@@ -41,32 +38,55 @@
     },
 
     /* ---------- sign-in ---------- */
-    // The sign-in page: on / the applicant's (no sign-in form: their link signs them in); on /admin, HR's and the admin's.
-    gate(error) {
+    /* The sign-in pages.
+       /       the applicant's: with their link, just their name; without it, the interview code and their name
+               side by side with the HR & Admin sign-in (a staff sign-in there goes on to /admin);
+       /admin  HR's and the admin's sign-in only. */
+    gate(error, invite) {
       document.getElementById('nav').innerHTML = '';
       document.getElementById('who').innerHTML = '';
       const err = error ? `<p class="badge red" style="display:block;padding:8px 10px;border-radius:10px;white-space:normal">${esc(error)}</p>` : '';
       const logo = '<img class="gate-logo" src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397">';
-      if (API.view !== 'staff') {
-        $app().innerHTML = `<div class="gate"><div class="card">${logo}<h1>Your interview mock call</h1>${err}
-          <p>Open the <b>interview link</b> HR sent you, in Chrome or Edge on a computer, with a headset.</p>
-          <p class="muted small">The link works <b>once</b>: it signs you in to your phone for this interview. Keep that browser tab open until HR tells you the interview is over. If the link was already used or has expired, ask HR for a new one.</p></div></div>`;
-        return;
-      }
-      $app().innerHTML = `<div class="gate"><div class="card">${logo}<h1>Admin &amp; HR sign-in</h1>${err}
+      const staffCard = `<div class="card"><h2>🧑‍💼 HR &amp; Admin</h2>
         <form id="hrForm">
           <label class="f" for="hrName">Username</label><input type="text" id="hrName" autocomplete="username" maxlength="40" required>
           <label class="f" for="hrPass">Password</label><input type="password" id="hrPass" autocomplete="current-password" required>
           <p class="tiny muted" style="margin:6px 0 0">Admin: type your name and the admin passphrase.</p>
-          <div class="row" style="margin-top:14px"><button class="btn primary" type="submit">Sign in</button></div>
-        </form></div></div>`;
+          <div class="row" style="margin-top:14px"><button class="btn navy" type="submit">Sign in</button></div>
+        </form></div>`;
+      const nameField = `<label class="f" for="apEnterName">Your full name</label><input type="text" id="apEnterName" autocomplete="name" maxlength="60" required>`;
+      if (API.view !== 'staff' && invite) {
+        $app().innerHTML = `<div class="gate"><div class="card">${logo}<h1>Welcome to your interview</h1>${err}
+          <form id="enterForm">${nameField}
+            <p class="tiny muted" style="margin:6px 0 0">Use Chrome or Edge on a computer, with a headset. This link works once: keep this tab open until HR tells you the interview is over.</p>
+            <div class="row" style="margin-top:14px"><button class="btn primary" type="submit">Enter →</button></div></form></div></div>`;
+      } else if (API.view !== 'staff') {
+        $app().innerHTML = `<div class="gate wide">${logo}${err}<div class="gate-cols">
+          <div class="card"><h2>👤 Applicant</h2><p class="small muted">Open the interview link HR sent you, or type the code from it.</p>
+            <form id="enterForm"><label class="f" for="apCode">Interview code</label><input type="text" id="apCode" maxlength="40" required autocomplete="off" placeholder="e.g. 9hcwhb5yczn4">
+              ${nameField}<div class="row" style="margin-top:14px"><button class="btn primary" type="submit">Enter →</button></div></form></div>
+          ${staffCard}</div></div>`;
+      } else $app().innerHTML = `<div class="gate">${logo}${err}${staffCard.replace('🧑‍💼 HR &amp; Admin', 'Admin &amp; HR sign-in')}</div>`;
+      const enter = document.getElementById('enterForm');
+      if (enter) enter.onsubmit = async (ev) => {
+        ev.preventDefault();
+        const code = invite || document.getElementById('apCode').value.trim().replace(/^.*[?&]invite=/, '');
+        try {
+          API.signIn(await API.post('/api/auth/invite', { code, name: document.getElementById('apEnterName').value }));
+          location.hash = '#/phone';
+          location.reload();
+        } catch (e) { U.toast(e.message, 'error'); }
+      };
+      const staff = document.getElementById('hrForm');
       try { document.getElementById('hrName').value = localStorage.getItem('hrmc_name') || ''; } catch (e) {}
-      document.getElementById('hrForm').onsubmit = async (ev) => {
+      staff.onsubmit = async (ev) => {
         ev.preventDefault();
         const name = document.getElementById('hrName').value.trim(), password = document.getElementById('hrPass').value;
         try {
-          API.signIn(await API.post('/api/auth/staff', { username: name, password }));
+          const res = await API.post('/api/auth/staff', { username: name, password });
           try { localStorage.setItem('hrmc_name', name); } catch (e) {}
+          if (API.view !== 'staff') { API.keepForStaff(res); location.href = '/admin#/console'; return; }
+          API.signIn(res);
           location.hash = '#/console';
           location.reload();
         } catch (e) { U.toast(e.message, 'error'); }
@@ -161,7 +181,7 @@
       el.innerHTML = `<div class="card"><h2>👥 Applicants</h2>
         <p class="muted small">Add an applicant to give them a desk extension and a <b>one-time interview link</b>. They open it in Chrome or Edge on a computer with a headset: it signs them in to their phone for one session (${App.cfg.features.sessionHours} h) and can't be used again. An unopened link lasts ${App.cfg.features.linkHours} h. ↻ New link replaces it (and ends any session); ⛔ End session signs them out.</p>
         <form id="addAp" class="row" style="align-items:end">
-          <div style="flex:2;min-width:180px"><label class="f" for="apName">Applicant's name</label><input type="text" id="apName" maxlength="60" required></div>
+          <div style="flex:2;min-width:180px"><label class="f" for="apName">Applicant's name (optional: they type theirs)</label><input type="text" id="apName" maxlength="60"></div>
           <div style="flex:2;min-width:160px"><label class="f" for="apPos">Position applied for</label><input type="text" id="apPos" maxlength="60" placeholder="e.g. Receptionist"></div>
           <button class="btn primary" type="submit">＋ Add &amp; get link</button>
         </form></div>
@@ -185,7 +205,7 @@
         box.innerHTML = `<table class="t"><thead><tr><th>Ext</th><th>Applicant</th><th>Position</th><th>One-time link</th><th>Calls</th><th>Avg score</th><th>Last seen</th><th></th></tr></thead><tbody>
           ${list.map((a) => {
             const [c, label] = LINK[a.link] || ['', a.link];
-            return `<tr><td class="mono"><b>${esc(a.ext)}</b></td><td><b>${esc(a.name)}</b><div class="tiny muted">added by ${esc(a.createdBy || '—')}</div></td><td>${esc(a.position || '—')}</td>
+            return `<tr><td class="mono"><b>${esc(a.ext)}</b></td><td><b>${esc(a.name)}</b>${a.invitedAs && a.invitedAs !== a.name ? `<div class="tiny muted">invited as ${esc(a.invitedAs)}</div>` : ''}<div class="tiny muted">added by ${esc(a.createdBy || '—')}</div></td><td>${esc(a.position || '—')}</td>
             <td><span class="badge ${c}">${label}</span>
               ${a.link === 'unused' ? `<div class="linkbox" style="margin-top:4px"><input type="text" readonly value="${esc(App.inviteLink(a.invite))}"><button class="btn small" data-copy="${esc(a.invite)}">Copy</button></div><div class="tiny muted">Unused link valid until ${esc(U.when(a.inviteExp))}</div>` : ''}
               ${a.link === 'in-session' ? `<div class="tiny muted">Opened ${esc(U.when(a.usedAt))} · session until ${esc(U.when(a.sessionExp))}</div>` : ''}
