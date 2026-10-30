@@ -33,6 +33,18 @@
     "RECORDING_DAYS": "90",
     "AI_MAX_MINUTES": "8"
   },
+  "previews": {
+    "vars": {
+      "RECORDING_DAYS": "90",
+      "AI_MAX_MINUTES": "8"
+    },
+    "kv_namespaces": [
+      {
+        "binding": "LSH_KV",
+        "id": "b121aa911590471bbad351d03274d7f4"
+      }
+    ]
+  },
   "observability": {
     "enabled": true
   }
