@@ -24,7 +24,7 @@ Each page keeps its own sign-in in the browser, so an admin can open a test appl
 
 | Who | How | What they get |
 |---|---|---|
-| 🛡 **Admin** | On the main page: any name + the **admin passphrase** (`ADMIN_PASSPHRASE`) | Everything HR has, plus **🛡 Admin**: HR accounts, settings, status; deleting applicants (with their calls and recordings) and single calls. |
+| 🛡 **Admin** | On the main page: any name + the **admin passphrase** (`ADMIN_PASSPHRASE`) | Everything HR has, plus **🛡 Admin**: HR accounts, settings, status; deleting applicants (with their calls and recordings) and **removing call logs** (see below). |
 | 🧑‍💼 **HR interviewer** | Their **username and password**, made by the admin on 🛡 Admin | 🎛 Console, 👥 Applicants, 🗂 Call Logs. |
 | 👤 **Applicant** | Their **one-time link** | ☎ My phone, for one interview session. |
 
@@ -50,7 +50,7 @@ Each page keeps its own sign-in in the browser, so an admin can open a test appl
    - **🤖 Agent caller**: the AI rings their phone and plays the caller. Under **🤖 Agent caller setup**, type who the AI plays (a persona), an optional opening line, and the voice. **👂 Follow** shows the conversation and the note live; **⏹** ends it.
 4. On a live call: **Mute**, **🔊 Speaker**, **End call**. When the applicant transfers the caller, you decide what the extension does: **Picks up** (the call ends), **No answer** or **Voicemail**.
 5. The applicant's **note** shows as they type it. **Score this call** (1–5), a **verdict** (Pass / Hold / Fail) and your **interview notes**, during or after the call. Only HR sees these.
-6. **🗂 Call Logs:** every call, with the recording (▶ play, ⬇ download), the note, the transcript (agent calls), the score and notes, and **⬇ Export CSV**.
+6. **🗂 Call Logs** (admins can remove calls: 🗑 on a row, tick rows and **🗑 Delete selected**, or **🗑 Delete all shown**; each asks first, deletes the recordings too, and never touches a call still on the line): every call, with the recording (▶ play, ⬇ download), the note, the transcript (agent calls), the score and notes, and **⬇ Export CSV**.
 
 **Applicant**
 1. Opens the one-time link in Chrome or Edge on a computer, with a headset, **types their full name** and presses **Enter →**. That signs them in to **☎ My phone** for this interview; the link can't be used again. (Or, on the main page, they type the interview code and their name.) They allow the microphone when the browser asks.

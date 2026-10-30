@@ -592,6 +592,17 @@ export class Switchboard extends DurableObject {
   }
   getCall(id) { return this.row(id); }
   deleteCall(id) { this.sql.exec('DELETE FROM calls WHERE id = ?', id); return true; }
+  // 🗑 Admin: several calls at once (never one that's still ringing or on the line). Returns the ids deleted.
+  deleteCalls(ids) {
+    const out = [];
+    for (const id of ids) {
+      const r = this.sql.exec('SELECT status FROM calls WHERE id = ?', id).toArray()[0];
+      if (!r || ['ringing', 'live'].includes(r.status)) continue;
+      this.sql.exec('DELETE FROM calls WHERE id = ?', id);
+      out.push(id);
+    }
+    return out;
+  }
 
   // Typed AI calls (no microphone): the conversation is kept here, so the caller's lines are the AI's, not the page's.
   appendTyped(id, who, lines) {

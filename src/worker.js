@@ -212,6 +212,14 @@ export default {
         if (res.error) return json({ error: res.error }, 403);
         return json(hr ? { call: forHR(res.call) } : { ok: true, done: !!res.done });
       }
+      // 🗑 Admin: remove call logs (the calls and their recordings), from 🗂 Call Logs.
+      if (path === '/api/admin/calls/delete') {
+        if (!admin) return adminOnly();
+        const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter(Boolean).slice(0, 500);
+        const done = await sb.deleteCalls(ids);
+        if (env.LSH_KV) await Promise.all(done.map((id) => env.LSH_KV.delete(REC + id)));
+        return json({ ok: true, deleted: done.length, skipped: ids.length - done.length });
+      }
       if (path === '/api/call/delete') {
         if (!admin) return adminOnly();
         await sb.deleteCall(String(body.id || ''));

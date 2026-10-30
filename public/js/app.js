@@ -291,18 +291,40 @@
     async calls(el) {
       const applicantId = App.route.arg;
       el.innerHTML = `<div class="card"><div class="row"><h2 style="margin:0">🗂 Call Logs</h2><span class="spacer"></span>
-        ${applicantId ? '<a class="btn small" href="#/calls">Show every applicant</a>' : ''}<button class="btn small" id="csv">⬇ Export CSV</button></div></div>
+        ${applicantId ? '<a class="btn small" href="#/calls">Show every applicant</a>' : ''}<button class="btn small" id="csv">⬇ Export CSV</button>
+        ${App.isAdmin() ? '<button class="btn small red" id="delSel" disabled>🗑 Delete selected</button><button class="btn small red" id="delAll">🗑 Delete all shown</button>' : ''}</div></div>
         <div class="card"><div class="tablewrap" id="callList"><div class="empty">Loading…</div></div></div>`;
       let calls;
       try { calls = (await API.post('/api/calls', applicantId ? { applicantId, limit: 500 } : { limit: 500 })).calls; } catch (e) { return U.toast(e.message, 'error'); }
       const box = el.querySelector('#callList');
       if (!calls.length) box.innerHTML = '<div class="empty">No calls yet.</div>';
-      else box.innerHTML = `<table class="t"><thead><tr><th>When</th><th>Applicant</th><th>Call</th><th>Status</th><th>Length</th><th>Final (J)</th><th>Assessment</th><th></th></tr></thead><tbody>
-        ${calls.map((c) => `<tr class="click" data-id="${esc(c.id)}"><td class="small">${esc(U.when(c.createdAt))}</td><td><b>${esc(c.applicantName)}</b></td>
+      const adm = App.isAdmin();
+      if (calls.length) box.innerHTML = `<table class="t"><thead><tr>${adm ? '<th><input type="checkbox" id="selAll" title="Select all"></th>' : ''}<th>When</th><th>Applicant</th><th>Call</th><th>Status</th><th>Length</th><th>Final (J)</th><th>Assessment</th><th></th></tr></thead><tbody>
+        ${calls.map((c) => `<tr class="click" data-id="${esc(c.id)}">${adm ? `<td class="nogo"><input type="checkbox" class="sel" value="${esc(c.id)}"></td>` : ''}<td class="small">${esc(U.when(c.createdAt))}</td><td><b>${esc(c.applicantName)}</b></td>
           <td>${c.mode === 'ai' ? '<span class="badge violet">🤖 AGENT CALLER</span> ' : '<span class="badge blue">🎙 LIVE</span> '}${esc(c.title)}<div class="tiny muted">by ${esc(c.hr)}</div></td>
           <td>${App.statusBadge(c.status)}</td><td class="mono">${c.talkMs ? U.dur(c.talkMs) : '—'}</td><td>${c.scores && c.scores.J ? `<b>${c.scores.J}</b> / 5` : c.avg != null ? `${c.avg} / 5 <span class="tiny muted">(A–I avg)</span>` : '—'}${c.scores && c.scores.J && c.avg != null ? `<div class="tiny muted">A–I avg ${c.avg}</div>` : ''}</td><td>${esc(c.verdict || '—')}</td>
-          <td>${c.recording ? '🎧' : ''}${c.noteSubmitted ? ' 📝' : ''}</td></tr>`).join('')}</tbody></table>`;
-      box.querySelectorAll('tr[data-id]').forEach((tr) => { tr.onclick = () => App.nav('#/call/' + tr.dataset.id); });
+          <td class="${adm ? 'nogo' : ''}">${c.recording ? '🎧' : ''}${c.noteSubmitted ? ' 📝' : ''}${adm ? ` <button class="btn small red" data-del1="${esc(c.id)}" title="Delete this call and its recording">🗑</button>` : ''}</td></tr>`).join('')}</tbody></table>`;
+      box.querySelectorAll('tr[data-id]').forEach((tr) => { tr.onclick = (ev) => { if (!ev.target.closest('.nogo')) App.nav('#/call/' + tr.dataset.id); }; });
+      if (adm) {
+        // 🗑 Removing call logs: a row, the ticked rows, or every call shown. Calls still on the line are kept.
+        const del = async (ids, what) => {
+          if (!ids.length || !confirm(`Delete ${what} and the recording${ids.length > 1 ? 's' : ''}? This can't be undone.`)) return;
+          try {
+            const r = await API.post('/api/admin/calls/delete', { ids });
+            U.toast(`Deleted ${r.deleted} call${r.deleted === 1 ? '' : 's'}.${r.skipped ? ` ${r.skipped} still on the line ${r.skipped === 1 ? 'was' : 'were'} kept.` : ''}`, 'ok');
+            Pages.calls(el);
+          } catch (e) { U.toast(e.message, 'error'); }
+        };
+        const picked = () => [...box.querySelectorAll('.sel:checked')].map((x) => x.value);
+        const sync = () => { el.querySelector('#delSel').disabled = !picked().length; el.querySelector('#delSel').textContent = `🗑 Delete selected${picked().length ? ` (${picked().length})` : ''}`; };
+        box.querySelectorAll('.sel').forEach((x) => { x.onchange = sync; });
+        const all = box.querySelector('#selAll');
+        if (all) all.onchange = () => { box.querySelectorAll('.sel').forEach((x) => { x.checked = all.checked; }); sync(); };
+        box.querySelectorAll('[data-del1]').forEach((b) => { b.onclick = () => del([b.dataset.del1], 'this call'); });
+        el.querySelector('#delSel').onclick = () => del(picked(), `${picked().length} selected call${picked().length > 1 ? 's' : ''}`);
+        el.querySelector('#delAll').onclick = () => del(calls.map((c) => c.id), `all ${calls.length} call${calls.length > 1 ? 's' : ''} shown${applicantId ? ' for this applicant' : ''}`);
+        el.querySelector('#delAll').disabled = !calls.length;
+      }
       el.querySelector('#csv').onclick = () => {
         const R = App.cfg.rubric || [];
         const rows = [['When', 'Applicant', 'Type', 'Call', 'HR', 'Status', 'Length (s)'].concat(R.map((x) => `${x.k}. ${x.name}`), ['A–I average', 'Final assessment'])]

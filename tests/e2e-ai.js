@@ -78,6 +78,17 @@ async function main() {
   for (const want of ['Hi, this is Maria', 'Next appointment date.', 'ZEBRA-MARKER']) if (!page.includes(want)) throw new Error('call page is missing: ' + want);
   await hr.screenshot({ path: shots + '/05-hr-agent-call.png', fullPage: true });
   step('call log has the transcript, the note, the persona and the recording');
+
+  // 🗑 The admin removes call logs from the list: tick one, Delete selected; then Delete all shown.
+  await hr.goto(BASE + '/#/calls');
+  await hr.waitForSelector('#callList .sel');
+  const before = (await hr.$$('#callList tr[data-id]')).length;
+  hr.on('dialog', (d) => d.accept());
+  await hr.locator('#callList .sel').first().check();
+  await hr.click('#delSel');
+  await hr.waitForFunction((n) => document.querySelectorAll('#callList tr[data-id]').length === n - 1 || (n === 1 && /No calls yet/.test(document.querySelector('#callList').textContent)), before);
+  if (before > 1) { await hr.click('#delAll'); await hr.waitForFunction(() => /No calls yet/.test(document.querySelector('#callList').textContent)); }
+  step('admin deleted call logs (selected, then all shown)');
   await browser.close();
   console.log('PASS');
 }

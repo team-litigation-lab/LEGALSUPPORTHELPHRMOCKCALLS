@@ -159,6 +159,7 @@ async function main() {
   await hr.waitForFunction(() => [...document.querySelectorAll('#toast .toast')].some((t) => /Nearly Client-Ready/.test(t.textContent)));
   await hr.goto(BASE + '/#/calls');
   await hr.waitForSelector('#callList tr[data-id]');
+  if (await hr.$('#delAll') || await hr.$('[data-del1]')) throw new Error('an HR account can delete call logs');
   await hr.click('#callList tr[data-id]');
   await hr.waitForSelector('#loadRec');
   await hr.click('#loadRec');
