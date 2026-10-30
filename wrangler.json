@@ -31,8 +31,7 @@
   ],
   "vars": {
     "RECORDING_DAYS": "90",
-    "AI_MAX_MINUTES": "8",
-    "INVITE_DAYS": "7"
+    "AI_MAX_MINUTES": "8"
   },
   "observability": {
     "enabled": true

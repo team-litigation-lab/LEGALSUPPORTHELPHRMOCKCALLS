@@ -10,15 +10,36 @@ const shots = process.env.SHOTS || __dirname;
 const step = (m) => console.log('•', m);
 async function main() {
   const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
+  // 🛡 The admin (the passphrase) makes an HR account.
+  const adm = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  adm.on('pageerror', (e) => console.log('Admin page error:', e.message));
+  await adm.goto(BASE + '/');
+  await adm.fill('#hrName', 'Site Admin');
+  await adm.fill('#hrPass', PASS);
+  await adm.click('#hrForm button[type=submit]');
+  await adm.waitForSelector('#nav a[href="#/admin"]');
+  await adm.goto(BASE + '/#/admin');
+  await adm.fill('#uName', 'Hiring Manager');
+  await adm.fill('#uUser', 'hmanager');
+  await adm.fill('#uPass', 'interview-pass');
+  await adm.click('#hrSave button[type=submit]');
+  await adm.waitForSelector('[data-rm="hmanager"]');
+  await adm.screenshot({ path: shots + '/00-admin.png' });
+  step('admin signed in and made an HR account');
+
   const ctx = (await browser.newContext({ permissions: ['microphone'], viewport: { width: 1400, height: 900 } }));
   const hr = await ctx.newPage();
   hr.on('pageerror', (e) => console.log('HR page error:', e.message));
   await hr.goto(BASE + '/');
-  await hr.fill('#hrName', 'Hiring Manager');
-  await hr.fill('#hrPass', PASS);
+  await hr.fill('#hrName', 'hmanager');
+  await hr.fill('#hrPass', 'wrong-password');
+  await hr.click('#hrForm button[type=submit]');
+  await hr.waitForFunction(() => /Incorrect username or password/.test(document.body.textContent));
+  await hr.fill('#hrPass', 'interview-pass');
   await hr.click('#hrForm button[type=submit]');
   await hr.waitForSelector('#presence');
-  step('HR signed in');
+  if (await hr.$('#nav a[href="#/admin"]')) throw new Error('an HR account sees 🛡 Admin');
+  step('HR signed in with their account (no Admin for HR)');
 
   // A new applicant and their link.
   await hr.goto(BASE + '/#/applicants');
@@ -35,6 +56,15 @@ async function main() {
   await ap.waitForSelector('#kAv');
   if (new URL(ap.url()).search) throw new Error('the invite code stayed in the address bar');
   step('applicant signed in by the link');
+
+  // One-time access: the same link, opened again anywhere, doesn't sign in.
+  const again = await (await browser.newContext()).newPage();
+  await again.goto(link);
+  await again.waitForFunction(() => /already used/.test(document.body.textContent));
+  await again.context().close();
+  await ap.reload();
+  await ap.waitForSelector('#kAv');
+  step('the link works once; reloading keeps the session');
 
   await hr.goto(BASE + '/#/console');
   await hr.waitForSelector(`#presence [data-ext="${ext}"]`);
@@ -96,12 +126,17 @@ async function main() {
   await hr.screenshot({ path: shots + '/03-hr-call-log.png', fullPage: true });
   step('call log shows the note, the score, the transfer and the recording');
 
-  // Closing the link signs the applicant out.
+  // Ending the session signs the applicant out; the admin deletes the applicant and their calls.
   await hr.goto(BASE + '/#/applicants');
   hr.once('dialog', (d) => d.accept());
   await hr.click('[data-close]');
-  await ap.waitForFunction(() => /closed by HR|isn't valid|Sign-in|link/.test(document.body.textContent), null, { timeout: 10000 });
-  step('closing the link signs the applicant out');
+  await ap.waitForFunction(() => /session was ended|session has ended/.test(document.body.textContent), null, { timeout: 10000 });
+  step('ending the session signs the applicant out');
+  await adm.goto(BASE + '/#/applicants');
+  adm.once('dialog', (d) => d.accept());
+  await adm.click('[data-del]');
+  await adm.waitForFunction(() => /No applicants yet/.test(document.querySelector('#apList').textContent));
+  step('admin deleted the applicant, their calls and recordings');
 
   await browser.close();
   console.log('PASS');

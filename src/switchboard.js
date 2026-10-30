@@ -46,7 +46,10 @@ export class Switchboard extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS applicants (id TEXT PRIMARY KEY, name TEXT, position TEXT, ext TEXT, invite TEXT, invite_exp INTEGER, created_at INTEGER, last_seen INTEGER, archived INTEGER DEFAULT 0)`);
+    // 🔗 One-time access: an applicant's invite link signs them in once (invite_used). That opens one session
+    // (session, session_exp); a new link or a closed one ends it.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS applicants (id TEXT PRIMARY KEY, name TEXT, position TEXT, ext TEXT, invite TEXT, invite_exp INTEGER, invite_used INTEGER,
+      session TEXT, session_exp INTEGER, created_by TEXT, created_at INTEGER, last_seen INTEGER, archived INTEGER DEFAULT 0)`);
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS applicants_by_ext ON applicants (ext)');
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS applicants_by_invite ON applicants (invite)');
     this.sql.exec(`CREATE TABLE IF NOT EXISTS hr (name TEXT PRIMARY KEY, ext TEXT, created_at INTEGER, last_seen INTEGER)`);
@@ -54,6 +57,9 @@ export class Switchboard extends DurableObject {
       status TEXT, created_at INTEGER, answered_at INTEGER, ended_at INTEGER, score REAL, data TEXT)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS calls_by_applicant ON calls (applicant_id, created_at)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS calls_by_time ON calls (created_at)`);
+    // 👤 HR interviewer accounts, made by the admin (src/auth.js hashes the passwords).
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS hr_users (username TEXT PRIMARY KEY, name TEXT, pass TEXT, disabled INTEGER DEFAULT 0, created_at INTEGER, last_login INTEGER)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS usage (id INTEGER PRIMARY KEY AUTOINCREMENT, who TEXT, kind TEXT, at INTEGER)`);
     // Phones ping every 20 seconds; this answers without waking the object.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -105,7 +111,7 @@ export class Switchboard extends DurableObject {
     const cid = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
     this.ctx.acceptWebSocket(server, ['c:' + cid, 'u:' + who.id, 'r:' + who.role]);
     const ext = who.role === 'h' ? this.hrExt(who.id) : (prof ? prof.ext || '' : '');
-    const me = { cid, role: who.role, id: who.id, name: prof ? prof.name : who.id, position: prof ? prof.position : '', ext, status: who.role === 'c' ? 'available' : 'online', call: null, at: now() };
+    const me = { cid, role: who.role, id: who.id, user: who.user || '', name: prof ? prof.name : who.id, position: prof ? prof.position : '', ext, status: who.role === 'c' ? 'available' : 'online', call: null, at: now() };
     server.serializeAttachment(me);
     if (prof) this.sql.exec('UPDATE applicants SET last_seen = ? WHERE id = ?', now(), who.id);
     // A phone that reconnects mid-call is told about it, so it can resume.
@@ -456,42 +462,108 @@ export class Switchboard extends DurableObject {
   /* =========================================================
      Called by the Worker (RPC). Identity is already checked there.
      ========================================================= */
-  // 🔗 HR invites an applicant: a name, the position, a desk extension and a sign-in link.
-  createApplicant(name, position, days) {
+  // 🔗 HR invites an applicant: a name, the position, a desk extension and a one-time sign-in link.
+  createApplicant(name, position, by) {
     const id = 'ap_' + crypto.randomUUID().replace(/-/g, '').slice(0, 10);
     const top = this.sql.exec('SELECT MAX(CAST(ext AS INTEGER)) AS n FROM applicants').toArray()[0].n;
     const ext = String(Math.max(APPLICANT_EXT, Number(top) || 0) + 1);
-    this.sql.exec('INSERT INTO applicants (id, name, position, ext, invite, invite_exp, created_at, last_seen, archived) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0)',
-      id, name, position, ext, inviteCode(), now() + days * 86400000, now());
-    return this.applicant(id);
+    this.sql.exec('INSERT INTO applicants (id, name, position, ext, invite, invite_exp, created_by, created_at, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)',
+      id, name, position, ext, inviteCode(), now() + this.getSettings().linkHours * 3600000, String(by || ''), now());
+    return this.applicantView(this.applicant(id));
   }
-  // A new link (the old one stops working), good for another `days`.
-  renewInvite(id, days) {
+  // A new link: the old one (used or not) stops working, and any session it opened ends.
+  renewInvite(id) {
     if (!this.applicant(id)) return null;
-    this.sql.exec('UPDATE applicants SET invite = ?, invite_exp = ?, archived = 0 WHERE id = ?', inviteCode(), now() + days * 86400000, id);
-    return this.applicant(id);
+    this.sql.exec('UPDATE applicants SET invite = ?, invite_exp = ?, invite_used = NULL, session = NULL, session_exp = NULL, archived = 0 WHERE id = ?',
+      inviteCode(), now() + this.getSettings().linkHours * 3600000, id);
+    this.kick(id);
+    return this.applicantView(this.applicant(id));
   }
-  // The invite link signs the applicant in for as long as it's valid (they can reopen it, on any computer).
+  // The link works once: the first open starts the applicant's session (getSettings().sessionHours) and burns the link.
+  // Reloading the page keeps the session (the browser holds it); opening the link again doesn't.
   redeemInvite(code) {
-    const a = this.sql.exec('SELECT * FROM applicants WHERE invite = ?', String(code || '')).toArray()[0];
+    const a = code ? this.sql.exec('SELECT * FROM applicants WHERE invite = ?', String(code)).toArray()[0] : null;
     if (!a) return { error: 'This interview link isn\'t valid. Ask HR for a new one.', status: 404 };
     if (a.archived) return { error: 'This interview link was closed. Ask HR for a new one.', status: 403 };
+    if (a.invite_used) return { error: 'This interview link was already used. It works only once: ask HR for a new one.', status: 403, code: 'used' };
     if (now() > a.invite_exp) return { error: 'This interview link has expired. Ask HR for a new one.', status: 403 };
-    this.sql.exec('UPDATE applicants SET last_seen = ? WHERE id = ?', now(), a.id);
-    return { applicant: a };
+    const session = crypto.randomUUID().replace(/-/g, '').slice(0, 16), exp = now() + this.getSettings().sessionHours * 3600000;
+    this.sql.exec('UPDATE applicants SET invite_used = ?, session = ?, session_exp = ?, last_seen = ? WHERE id = ?', now(), session, exp, now(), a.id);
+    return { applicant: this.applicant(a.id) };
+  }
+  // The applicant's session is still the one their link opened (not ended by a new link, a closed link or time).
+  sessionOk(id, session) {
+    const a = this.applicant(id);
+    return !!(a && !a.archived && a.session && a.session === session && a.session_exp > now());
   }
   getApplicant(id) { return this.applicant(id); }
+  // What HR sees of an applicant: the link only while it's still unused.
+  applicantView(a) {
+    if (!a) return null;
+    const t = now();
+    const link = a.archived ? 'closed' : a.invite_used ? (a.session && a.session_exp > t ? 'in-session' : 'used') : a.invite_exp < t ? 'expired' : 'unused';
+    return { id: a.id, name: a.name, position: a.position, ext: a.ext, createdBy: a.created_by || '', createdAt: a.created_at, lastSeen: a.last_seen, archived: !!a.archived,
+      link, invite: link === 'unused' ? a.invite : '', inviteExp: a.invite_exp, usedAt: a.invite_used || null, sessionExp: a.session_exp || null, calls: a.calls, avg: a.avg };
+  }
   listApplicants() {
-    return this.sql.exec(`SELECT a.id, a.name, a.position, a.ext, a.invite, a.invite_exp, a.created_at, a.last_seen, a.archived,
+    return this.sql.exec(`SELECT a.*,
       (SELECT COUNT(*) FROM calls c WHERE c.applicant_id = a.id AND c.status = 'ended') AS calls,
       (SELECT AVG(score) FROM calls c WHERE c.applicant_id = a.id AND c.score IS NOT NULL) AS avg
-      FROM applicants a ORDER BY a.created_at DESC`).toArray();
+      FROM applicants a ORDER BY a.created_at DESC`).toArray().map((a) => this.applicantView(a));
   }
   setArchived(id, archived) {
-    this.sql.exec('UPDATE applicants SET archived = ? WHERE id = ?', archived ? 1 : 0, id);
-    // A closed link signs the applicant out of every open phone.
-    if (archived) for (const w of this.open('u:' + id)) { try { w.close(4001, 'closed'); } catch (e) {} }
-    return this.applicant(id);
+    this.sql.exec('UPDATE applicants SET archived = ?, session = CASE WHEN ? THEN NULL ELSE session END WHERE id = ?', archived ? 1 : 0, archived ? 1 : 0, id);
+    if (archived) this.kick(id);
+    return this.applicantView(this.applicant(id));
+  }
+  // Signs the applicant out of every open phone (a closed link, a new link, or their record deleted).
+  kick(id) { for (const w of this.open('u:' + id)) { try { w.close(4001, 'closed'); } catch (e) {} } }
+  // 🗑 Admin: the applicant and every call of theirs. Returns the call ids, so the Worker can delete the recordings.
+  deleteApplicant(id) {
+    const ids = this.sql.exec('SELECT id FROM calls WHERE applicant_id = ?', id).toArray().map((x) => x.id);
+    this.kick(id);
+    this.sql.exec('DELETE FROM calls WHERE applicant_id = ?', id);
+    this.sql.exec('DELETE FROM applicants WHERE id = ?', id);
+    return ids;
+  }
+
+  /* ---------------- 🛡 Admin: HR accounts and settings ---------------- */
+  hrUser(username) { return this.sql.exec('SELECT * FROM hr_users WHERE username = ?', String(username || '').toLowerCase()).toArray()[0] || null; }
+  listHrUsers() { return this.sql.exec('SELECT username, name, disabled, created_at, last_login FROM hr_users ORDER BY name').toArray(); }
+  saveHrUser(u) {
+    const username = String(u.username || '').toLowerCase();
+    const cur = this.hrUser(username);
+    if (!cur && !u.pass) return { error: 'Set a password for the new account.' };
+    if (!cur) this.sql.exec('INSERT INTO hr_users (username, name, pass, disabled, created_at) VALUES (?, ?, ?, 0, ?)', username, u.name, u.pass, now());
+    else this.sql.exec('UPDATE hr_users SET name = ?, pass = ?, disabled = ? WHERE username = ?', u.name || cur.name, u.pass || cur.pass, u.disabled == null ? cur.disabled : u.disabled ? 1 : 0, username);
+    // A disabled account is signed out of its open consoles.
+    if (u.disabled) for (const w of this.open('r:h')) if (this.att(w).user === username) { try { w.close(4001, 'disabled'); } catch (e) {} }
+    return { user: this.listHrUsers().find((x) => x.username === username) };
+  }
+  deleteHrUser(username) { this.saveHrUser({ username, disabled: true }); this.sql.exec('DELETE FROM hr_users WHERE username = ?', String(username || '').toLowerCase()); return true; }
+  hrLogin(username) { this.sql.exec('UPDATE hr_users SET last_login = ? WHERE username = ?', now(), String(username || '').toLowerCase()); }
+
+  getSettings() {
+    const row = this.sql.exec(`SELECT v FROM settings WHERE k = 'main'`).toArray()[0];
+    return Object.assign({ linkHours: 72, sessionHours: 4 }, row ? JSON.parse(row.v) : {});
+  }
+  saveSettings(o) {
+    const cur = this.getSettings(), num = (v, lo, hi, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+    const v = { linkHours: num(o.linkHours, 1, 720, cur.linkHours), sessionHours: num(o.sessionHours, 1, 24, cur.sessionHours) };
+    this.sql.exec(`INSERT OR REPLACE INTO settings (k, v) VALUES ('main', ?)`, JSON.stringify(v));
+    return v;
+  }
+  stats() {
+    const q = (x, ...a) => this.sql.exec(x, ...a).toArray()[0].n;
+    return {
+      applicants: q('SELECT COUNT(*) AS n FROM applicants WHERE archived = 0'),
+      online: new Set(this.ctx.getWebSockets('r:c').filter((w) => w.readyState === OPEN).map((w) => this.att(w).id)).size,
+      hrOnline: new Set(this.ctx.getWebSockets('r:h').filter((w) => w.readyState === OPEN).map((w) => this.att(w).name)).size,
+      liveNow: q(`SELECT COUNT(*) AS n FROM calls WHERE status IN ('ringing', 'live')`),
+      calls: q(`SELECT COUNT(*) AS n FROM calls WHERE status = 'ended'`),
+      unscored: q(`SELECT COUNT(*) AS n FROM calls WHERE status = 'ended' AND score IS NULL`),
+      hrUsers: q('SELECT COUNT(*) AS n FROM hr_users WHERE disabled = 0')
+    };
   }
 
   listCalls(f) {

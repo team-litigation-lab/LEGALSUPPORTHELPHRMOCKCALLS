@@ -1,26 +1,28 @@
 /**
  * LSH HR Mock Calls: a browser VOIP phone for the mock calls in HR interviews.
  * Cloned from LSH Ring Channel's phone system, without the CMS, the Training Portal or the training scenarios.
+ * It stands alone: its own admin, its own HR accounts, and one-time interview links for applicants.
  *
  * Cloudflare Worker + one Durable Object (the Switchboard, src/switchboard.js):
  *   /             the app (public/): HR's console and the applicant's phone
  *   /ws           each phone's WebSocket to the Switchboard (presence, ringing, WebRTC signaling)
- *   /api/...      sign-in (HR passphrase, applicant invite links), applicants, call records, recordings,
- *                 TURN credentials, and the 🤖 agent caller (Gemini Live)
+ *   /api/...      sign-in (the admin passphrase, HR accounts, applicants' one-time links), applicants, call records,
+ *                 recordings, TURN credentials, the 🤖 agent caller (Gemini Live), and 🛡 /api/admin/... (admin only)
  *
  * Secrets (wrangler secret put <NAME>):
- *   ADMIN_PASSPHRASE     required: HR's sign-in, and it signs sign-in tokens
+ *   ADMIN_PASSPHRASE     required: the admin's sign-in (any name), and it signs sign-in tokens
  *   SESSION_SECRET       optional; signs sign-in tokens instead (changing it signs everyone out)
  *   TURN_KEY_ID, TURN_KEY_API_TOKEN
  *                        optional but recommended: Cloudflare Realtime TURN, so calls connect on
  *                        networks that block direct audio (strict home routers, mobile data, offices)
  *   GEMINI_API_KEY5 … GEMINI_API_KEY9 (and GEMINI_API_KEY, _KEY1, _KEY2)
  *                        optional: the 🤖 agent caller (without them, live calls only)
- * Variables: RECORDING_DAYS (default 90), AI_MAX_MINUTES (default 8), INVITE_DAYS (default 7).
+ * Variables: RECORDING_DAYS (default 90), AI_MAX_MINUTES (default 8). How long a link and a session last is
+ * set on 🛡 Admin → Settings (kept in the Switchboard).
  * Recordings are kept in the LSH_KV namespace under "hrmc:rec:" and expire on their own.
  */
 import { Switchboard } from './switchboard.js';
-import { makeToken, readToken, readTokenString, safeEqual, secretOf } from './auth.js';
+import { makeToken, readToken, readTokenString, safeEqual, secretOf, hashPassword, checkPassword } from './auth.js';
 import { COMPANY, DIRECTORY, NOTE_FIELDS, AI_VOICES, listScenarios } from './scenarios.js';
 import { hasAI, generate, liveToken } from './gemini.js';
 import { callerPrompt, liveSetup } from './prompts.js';
@@ -33,7 +35,23 @@ const board = (env) => env.SWITCHBOARD.get(env.SWITCHBOARD.idFromName('main'));
 const REC = 'hrmc:rec:';
 const recDays = (env) => Math.min(365, Math.max(1, Number(env.RECORDING_DAYS) || 90));
 const aiMinutes = (env) => Math.min(15, Math.max(2, Number(env.AI_MAX_MINUTES) || 8));
-const inviteDays = (env) => Math.min(60, Math.max(1, Number(env.INVITE_DAYS) || 7));
+
+/* Who a token belongs to, checked against the Switchboard every time: an HR account that was disabled or
+   deleted, or an applicant whose session ended (a new link, a closed link, its time up), is signed out.
+   Admin and HR are both staff (role 'h' on the phone system); `admin` opens 🛡 Admin. */
+async function identify(env, tok) {
+  if (!tok) return null;
+  const sb = board(env);
+  if (tok.role === 'a') return { role: 'h', admin: true, id: tok.id, name: tok.id, user: '' };
+  if (tok.role === 'h') {
+    const u = await sb.hrUser(tok.id);
+    return u && !u.disabled ? { role: 'h', admin: false, id: u.name, name: u.name, user: u.username } : null;
+  }
+  const [id, session] = String(tok.id).split(':');
+  if (!(await sb.sessionOk(id, session))) return null;
+  const a = await sb.getApplicant(id);
+  return { role: 'c', id: a.id, name: a.name, position: a.position, ext: a.ext };
+}
 
 // What HR sees of a call record (the applicant never reads call records).
 function forHR(r) {
@@ -74,10 +92,10 @@ export default {
       if (path === '/ws') {
         if (request.headers.get('Upgrade') !== 'websocket') return new Response('Expected a WebSocket', { status: 426 });
         const protos = (request.headers.get('Sec-WebSocket-Protocol') || '').split(',').map((x) => x.trim());
-        const tok = await readTokenString(env, protos[0] === 'hrmc' && protos[1] ? protos[1] : '');
-        if (!tok) return new Response('Sign-in required', { status: 401 });
+        const who = await identify(env, await readTokenString(env, protos[0] === 'hrmc' && protos[1] ? protos[1] : ''));
+        if (!who) return new Response('Sign-in required', { status: 401 });
         const headers = new Headers(request.headers);
-        headers.set('X-Who', JSON.stringify(tok));
+        headers.set('X-Who', JSON.stringify({ role: who.role, id: who.id, user: who.user || '' }));
         return board(env).fetch(new Request(request.url, { headers }));
       }
 
@@ -87,44 +105,50 @@ export default {
 
       /* ---------- sign-in ---------- */
       if (path === '/api/auth/status') return json({ configured: !!secretOf(env), company: COMPANY.name });
-      if (path === '/api/auth/hr') {
-        if (!env.ADMIN_PASSPHRASE) return json({ error: 'HR sign-in isn\'t set up yet: add the ADMIN_PASSPHRASE secret in Cloudflare.' }, 501);
-        const { passphrase, name } = await request.json().catch(() => ({}));
+      // 🛡 Staff sign-in: an HR account (username and its password), or the admin passphrase (any name).
+      if (path === '/api/auth/staff') {
+        if (!env.ADMIN_PASSPHRASE) return json({ error: 'Sign-in isn\'t set up yet: add the ADMIN_PASSPHRASE secret in Cloudflare.' }, 501);
+        const { username, password } = await request.json().catch(() => ({}));
         await new Promise((r) => setTimeout(r, 400));   // slows down guessing
-        if (!safeEqual(String(passphrase || ''), env.ADMIN_PASSPHRASE)) return json({ error: 'Incorrect passphrase' }, 401);
-        const who = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 40) || 'HR';
-        return json({ token: await makeToken(env, 'h', who, 12), role: 'h', id: who, name: who });
+        const uname = String(username || '').trim().toLowerCase().slice(0, 40);
+        const u = uname ? await board(env).hrUser(uname) : null;
+        if (u && !u.disabled && (await checkPassword(String(password || ''), u.pass))) {
+          await board(env).hrLogin(u.username);
+          return json({ token: await makeToken(env, 'h', u.username, 12), role: 'h', id: u.username, name: u.name });
+        }
+        if (safeEqual(String(password || ''), env.ADMIN_PASSPHRASE)) {
+          const who = String(username || '').trim().replace(/\s+/g, ' ').slice(0, 40) || 'Admin';
+          return json({ token: await makeToken(env, 'a', who, 12), role: 'a', id: who, name: who });
+        }
+        return json({ error: u && u.disabled ? 'This account is disabled. Ask the admin.' : 'Incorrect username or password' }, 401);
       }
-      // 🔗 The applicant's invite link (?invite=<code>) signs them in to their phone.
+      // 🔗 The applicant's one-time link (?invite=<code>): the first open signs them in for one session.
       if (path === '/api/auth/invite') {
         if (!secretOf(env)) return json({ error: 'The phone system isn\'t set up yet.' }, 501);
         const { code } = await request.json().catch(() => ({}));
         await new Promise((r) => setTimeout(r, 300));
         const res = await board(env).redeemInvite(String(code || '').trim().slice(0, 40));
-        if (res.error) return json({ error: res.error }, res.status || 400);
+        if (res.error) return json({ error: res.error, code: res.code || '' }, res.status || 400);
         const a = res.applicant;
-        const hours = Math.max(1, Math.min(24 * 7, Math.ceil((a.invite_exp - Date.now()) / 3600000)));
-        return json({ token: await makeToken(env, 'c', a.id, hours), role: 'c', id: a.id, name: a.name, position: a.position });
+        const hours = Math.max(1, (a.session_exp - Date.now()) / 3600000);
+        return json({ token: await makeToken(env, 'c', `${a.id}:${a.session}`, hours), role: 'c', id: a.id, name: a.name, position: a.position });
       }
 
       const tok = await readToken(env, request);
-      if (!tok) return json({ error: 'Sign-in required' }, 401);
-      const hr = tok.role === 'h';
+      const me = await identify(env, tok);
+      if (!me) return json({ error: tok && tok.role === 'c' ? 'Your interview session has ended.' : 'Sign-in required' }, 401);
+      const hr = me.role === 'h', admin = !!me.admin;
       const sb = board(env);
-      let me = { role: tok.role, id: tok.id, name: tok.id, position: '' };
-      if (!hr) {
-        const a = await sb.getApplicant(tok.id);
-        if (!a || a.archived) return json({ error: 'Sign-in required' }, 401);
-        me = { role: 'c', id: a.id, name: a.name, position: a.position, ext: a.ext };
-      }
       const body = path === '/api/recording/put' ? null : await request.json().catch(() => ({}));
       const hrOnly = () => json({ error: 'Not allowed' }, 403);
+      const adminOnly = () => json({ error: 'Admin only' }, 403);
 
       if (path === '/api/config') {
+        const st = await sb.getSettings();
         return json({
-          me, company: COMPANY, directory: DIRECTORY, noteFields: NOTE_FIELDS,
+          me: { role: me.role, admin, id: me.id, name: me.name, position: me.position || '', ext: me.ext || '' }, company: COMPANY, directory: DIRECTORY, noteFields: NOTE_FIELDS,
           scenarios: hr ? listScenarios() : [], voices: hr ? AI_VOICES : [],
-          features: { ai: hasAI(env), recordings: !!env.LSH_KV, aiMinutes: aiMinutes(env), turn: !!(env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN), inviteDays: inviteDays(env), recordingDays: recDays(env) }
+          features: { ai: hasAI(env), recordings: !!env.LSH_KV, aiMinutes: aiMinutes(env), turn: !!(env.TURN_KEY_ID && env.TURN_KEY_API_TOKEN), linkHours: st.linkHours, sessionHours: st.sessionHours, recordingDays: recDays(env) }
         });
       }
       if (path === '/api/ice') {
@@ -139,10 +163,37 @@ export default {
         if (!hr) return hrOnly();
         const name = String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 60);
         if (!name) return json({ error: 'Type the applicant\'s name.' }, 400);
-        return json({ applicant: await sb.createApplicant(name, String(body.position || '').trim().slice(0, 60), inviteDays(env)) });
+        return json({ applicant: await sb.createApplicant(name, String(body.position || '').trim().slice(0, 60), me.name) });
       }
-      if (path === '/api/applicants/renew') { if (!hr) return hrOnly(); return json({ applicant: await sb.renewInvite(String(body.id || ''), inviteDays(env)) }); }
+      if (path === '/api/applicants/renew') { if (!hr) return hrOnly(); return json({ applicant: await sb.renewInvite(String(body.id || '')) }); }
       if (path === '/api/applicants/archive') { if (!hr) return hrOnly(); return json({ applicant: await sb.setArchived(String(body.id || ''), !!body.archived) }); }
+
+      /* ---------- 🛡 Admin ---------- */
+      if (path === '/api/admin/overview') {
+        if (!admin) return adminOnly();
+        const ice = await iceServers(env);
+        return json({ stats: await sb.stats(), settings: await sb.getSettings(), hrUsers: await sb.listHrUsers(),
+          setup: { ai: hasAI(env), turn: ice.turn, turnError: ice.error || '', recordings: !!env.LSH_KV, recordingDays: recDays(env), aiMinutes: aiMinutes(env), sessionSecret: !!env.SESSION_SECRET } });
+      }
+      if (path === '/api/admin/settings') { if (!admin) return adminOnly(); return json({ settings: await sb.saveSettings(body.settings || {}) }); }
+      if (path === '/api/admin/hr/save') {
+        if (!admin) return adminOnly();
+        const username = String(body.username || '').trim().toLowerCase();
+        if (!/^[a-z0-9._-]{3,30}$/.test(username)) return json({ error: 'The username is 3 to 30 letters, numbers, dots, dashes or underscores.' }, 400);
+        const password = String(body.password || '');
+        if (password && password.length < 8) return json({ error: 'The password needs at least 8 characters.' }, 400);
+        const res = await sb.saveHrUser({ username, name: String(body.name || '').trim().replace(/\s+/g, ' ').slice(0, 40) || username,
+          pass: password ? await hashPassword(password) : '', disabled: body.disabled == null ? null : !!body.disabled });
+        return res.error ? json({ error: res.error }, 400) : json(res);
+      }
+      if (path === '/api/admin/hr/delete') { if (!admin) return adminOnly(); await sb.deleteHrUser(String(body.username || '')); return json({ ok: true }); }
+      // An applicant, every call of theirs and the recordings.
+      if (path === '/api/admin/applicant/delete') {
+        if (!admin) return adminOnly();
+        const ids = await sb.deleteApplicant(String(body.id || ''));
+        if (env.LSH_KV) await Promise.all(ids.map((id) => env.LSH_KV.delete(REC + id)));
+        return json({ ok: true, calls: ids.length });
+      }
 
       /* ---------- call records (HR) ---------- */
       if (path === '/api/calls') { if (!hr) return hrOnly(); return json({ calls: await sb.listCalls(body || {}) }); }
@@ -158,7 +209,7 @@ export default {
         return json(hr ? { call: forHR(res.call) } : { ok: true });
       }
       if (path === '/api/call/delete') {
-        if (!hr) return hrOnly();
+        if (!admin) return adminOnly();
         await sb.deleteCall(String(body.id || ''));
         if (env.LSH_KV) await env.LSH_KV.delete(REC + String(body.id || ''));
         return json({ ok: true });

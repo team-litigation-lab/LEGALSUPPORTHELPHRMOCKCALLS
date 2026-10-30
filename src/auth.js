@@ -1,5 +1,6 @@
 /* Sign-in tokens: "<role>.<subject>.<expiry>.<hmac>"
-   role h = HR (subject: their name), c = applicant (subject: applicant id). */
+   role a = admin (subject: their name), h = HR interviewer (subject: their username),
+   c = applicant (subject: "<applicant id>:<session>", the session their one-time link opened). */
 const enc = new TextEncoder();
 
 async function hmac(secret, msg) {
@@ -27,7 +28,7 @@ export async function readTokenString(env, t) {
   const parts = String(t || '').split('.');
   if (parts.length !== 4) return null;
   const [role, subj, exp, sig] = parts;
-  if (!/^[hc]$/.test(role) || Date.now() > Number(exp)) return null;
+  if (!/^[ahc]$/.test(role) || Date.now() > Number(exp)) return null;
   const good = await hmac(secretOf(env), `${role}.${subj}.${exp}`);
   if (!safeEqual(good, sig)) return null;
   let id; try { id = decodeURIComponent(subj); } catch (e) { return null; }
@@ -37,4 +38,21 @@ export async function readTokenString(env, t) {
 export async function readToken(env, request) {
   const h = request.headers.get('Authorization') || '';
   return readTokenString(env, h.startsWith('Bearer ') ? h.slice(7) : '');
+}
+
+/* HR account passwords: PBKDF2-SHA256, a random salt each, stored as "pbkdf2$<iterations>$<salt>$<hash>". */
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+async function pbkdf2(password, salt, iterations) {
+  const key = await crypto.subtle.importKey('raw', enc.encode(String(password)), 'PBKDF2', false, ['deriveBits']);
+  return b64(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256));
+}
+export async function hashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), it = 100000;
+  return `pbkdf2$${it}$${b64(salt)}$${await pbkdf2(password, salt, it)}`;
+}
+export async function checkPassword(password, stored) {
+  const [kind, it, salt, hash] = String(stored || '').split('$');
+  if (kind !== 'pbkdf2' || !hash) return false;
+  const s = Uint8Array.from(atob(salt), (c) => c.charCodeAt(0));
+  return safeEqual(await pbkdf2(password, s, Number(it)), hash);
 }

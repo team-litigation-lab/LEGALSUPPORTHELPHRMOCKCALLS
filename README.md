@@ -5,15 +5,35 @@ A browser phone system (VOIP) for the **mock calls in HR interviews**. HR rings 
 - **🎙 Live:** HR plays the caller over live audio; or
 - **🤖 Agent caller:** an AI voice (Gemini Live) plays the caller, from a scenario or from a persona HR types on the console.
 
+It **runs on its own, apart from the LSH training platform**: its own admin, its own HR accounts, and **one-time links** for applicants. Nothing here signs in through, or reports to, the Training Portal.
+
 It is cloned from **LSH Ring Channel**'s phone system (the Switchboard, the WebRTC engine, the hold music, transfers, recording and the AI caller). Ring Channel's **CMS integration** (Case Lookup, the CMS Training Library), the **LSH Training Portal** sign-in and course results, the **training scenarios** and metrics, the autograding and the messaging simulators are **left out**.
 
 Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudflare Worker with one Durable Object (the Switchboard). The audio goes straight between the two browsers over WebRTC, through a TURN relay when a network blocks direct audio.
 
+## Who signs in
+
+| Who | How | What they get |
+|---|---|---|
+| 🛡 **Admin** | Any name + the **admin passphrase** (`ADMIN_PASSPHRASE`) | Everything HR has, plus **🛡 Admin**: HR accounts, settings, status; deleting applicants (with their calls and recordings) and single calls. |
+| 🧑‍💼 **HR interviewer** | Their **username and password**, made by the admin on 🛡 Admin | 🎛 Console, 👥 Applicants, 🗂 Call Logs. |
+| 👤 **Applicant** | Their **one-time link** | ☎ My phone, for one interview session. |
+
+**🛡 Admin**
+- **👤 HR accounts:** add one (name shown on calls, username, password of at least 8 characters, stored salted and hashed), change a password, **Disable** (signs them out at once), **Enable**, 🗑 delete. Their calls stay in the Call Logs.
+- **⚙️ Settings:** how long an unopened one-time link works (default **72 hours**) and how long an applicant's session lasts once they open it (default **4 hours**).
+- **🩺 Status:** the TURN relay, the agent caller's Gemini keys, recordings, and the counts (applicants, phones open, HR online, calls, calls not scored).
+
+**🔗 One-time access**
+- Each applicant gets **one link, good for one sign-in**. The first open signs them in to their phone and **uses the link up**: opened again (in any browser, by anyone) it says *already used*. Reloading their own page keeps their session.
+- The session ends after the hours set on ⚙️ Settings, when HR presses **⛔ End session**, or when HR makes **↻ New link** (which also cancels the old one). The applicant is signed out at once.
+- 👥 Applicants shows each link's state: *Not opened yet* (with Copy), *In session*, *Used*, *Expired* or *Ended*. The link is only shown while it is unused.
+
 ## How a mock call goes
 
 **HR**
-1. Opens the site and signs in with their name and the **HR passphrase**.
-2. **👥 Applicants → ＋ Add & get link:** the applicant's name and the position. They get a **desk extension** (7001, 7002, …) and an **interview link**, copied to the clipboard to send them.
+1. Opens the site and signs in with their **username and password** (or the admin with the admin passphrase).
+2. **👥 Applicants → ＋ Add & get link:** the applicant's name and the position. They get a **desk extension** (7001, 7002, …) and a **one-time link**, copied to the clipboard to send them.
 3. **🎛 Console:** the applicants whose phones are open are on the left. Click one (or dial their extension on the keypad), then:
    - **📞 Call (live)**: their phone rings; once they answer, you are the caller. Set the **Caller ID** name and number they see (or **🙈 Hide caller ID**).
    - **🤖 Agent caller**: the AI rings their phone and plays the caller. Under **🤖 Agent caller setup**, type who the AI plays (a persona), an optional opening line, and the voice. **👂 Follow** shows the conversation and the note live; **⏹** ends it.
@@ -22,12 +42,10 @@ Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudfl
 6. **🗂 Call Logs:** every call, with the recording (▶ play, ⬇ download), the note, the transcript (agent calls), the score and notes, and **⬇ Export CSV**.
 
 **Applicant**
-1. Opens the interview link in Chrome or Edge on a computer, with a headset, and allows the microphone. The link signs them in to **☎ My phone** and leaves the address bar.
+1. Opens the one-time link in Chrome or Edge on a computer, with a headset, and allows the microphone. The link signs them in to **☎ My phone** for this interview, leaves the address bar, and can't be used again.
 2. Stays **● Available**. When the phone rings they see the caller ID and **📞 Answer**.
 3. On the call: **Mute**, **⏸ Hold** (the caller hears hold music), **↪ Transfer** (to an extension in the directory), **🔊 Speaker**, **Hang up**, and the **📝 call note**.
 4. After the call they finish the note and **📨 Submit** it. Applicants never see HR's scores or notes, nor the call logs.
-
-A link works for `INVITE_DAYS` (default 7) days, on any computer. **↻ New link** replaces it; **⛔ Close link** signs the applicant out at once.
 
 **Reliability:** an unanswered call rings out after 45 seconds (*Missed*); a phone that loses its connection has 30 seconds to come back; reloading either page mid-call reconnects it (the applicant clicks **🔊 Reconnect the call**).
 
@@ -53,14 +71,13 @@ npx wrangler deploy
 
 | Setting | |
 |---|---|
-| `ADMIN_PASSPHRASE` (secret) | **Required.** HR's sign-in, and it signs the sign-in tokens. |
+| `ADMIN_PASSPHRASE` (secret) | **Required.** The admin's sign-in, and it signs the sign-in tokens. HR accounts are made on 🛡 Admin. |
 | `SESSION_SECRET` (secret) | Optional: signs the tokens instead (changing it signs everyone out). |
 | `TURN_KEY_ID`, `TURN_KEY_API_TOKEN` (secrets) | Recommended: Cloudflare Realtime TURN, so calls connect on networks that block direct audio. Without them, calls use STUN only. |
 | `GEMINI_API_KEY5` … `GEMINI_API_KEY9` (then `GEMINI_API_KEY`, `_KEY1`, `_KEY2`) (secrets) | Optional: the 🤖 agent caller (the same LSH Gemini key pool as Ring Channel). Without them, live calls only. |
 | `LSH_KV` (KV binding) | The recordings, under `hrmc:rec:`. `wrangler.json` points at the shared LSH KV namespace (the same one as Ring Channel, a separate key prefix); give it its own namespace if you want the interview recordings kept apart. |
 | `RECORDING_DAYS` | How long recordings are kept (default 90). |
 | `AI_MAX_MINUTES` | The longest an agent call can run (default 8). |
-| `INVITE_DAYS` | How long an interview link works (default 7). |
 
 ## Local development and tests
 
@@ -72,7 +89,7 @@ cp .dev.vars.example .dev.vars
 npm run dev
 ```
 
-`tests/run.sh` starts `wrangler dev` with a stand-in for Gemini (`tests/mock-gemini.js`) and runs two browser tests in Chromium with fake microphones: `tests/e2e-live.js` (invite link, ring, answer, audio, hold, transfer, the live note, recording, the submitted note, HR's score, closing the link) and `tests/e2e-ai.js` (the agent caller with a typed persona, the live transcript, hold, transfer, the note, the call log). GitHub Actions runs them on every push and pull request (`.github/workflows/checks.yml`).
+`tests/run.sh` starts `wrangler dev` with a stand-in for Gemini (`tests/mock-gemini.js`) and runs two browser tests in Chromium with fake microphones: `tests/e2e-live.js` (the admin makes an HR account, HR signs in with it, the one-time link works once, ring, answer, audio, hold, transfer, the live note, recording, the submitted note, HR's score, ending the session, the admin deleting the applicant) and `tests/e2e-ai.js` (the agent caller with a typed persona, the live transcript, hold, transfer, the note, the call log). GitHub Actions runs them on every push and pull request (`.github/workflows/checks.yml`).
 
 ```bash
 npm install --prefix tests && tests/node_modules/.bin/playwright install chromium
@@ -92,5 +109,5 @@ NODE_PATH=tests/node_modules bash tests/run.sh
 | `src/prompts.js` | What the agent caller is told. |
 | `src/gemini.js`, `src/auth.js` | The Gemini key pool and Live tokens; the sign-in tokens. |
 | `public/js/phone.js`, `sounds.js`, `ai-call.js` | The VOIP engine (from Ring Channel), the phone sounds and hold music, the agent caller in the browser. |
-| `public/js/app.js` | Sign-in, the top bar, 👥 Applicants, 🗂 Call Logs and a call's page. |
+| `public/js/app.js` | Sign-in, the top bar, 👥 Applicants, 🗂 Call Logs, a call's page, and 🛡 Admin. |
 | `public/js/hr.js`, `public/js/applicant.js` | HR's console and the applicant's phone. |

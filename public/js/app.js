@@ -2,7 +2,8 @@
    The app shell: sign-in, the top bar, the phone line to the
    Switchboard, and HR's pages other than the console.
      HR          #/console (js/hr.js) · #/applicants · #/calls · #/call/<id>
-     Applicant   #/phone (js/applicant.js), signed in by their invite link
+     Admin       all of HR's pages, and #/admin (HR accounts, settings, status)
+     Applicant   #/phone (js/applicant.js), signed in once by their one-time link
    ========================================================= */
 (function () {
   'use strict';
@@ -11,10 +12,11 @@
 
   const App = {
     cfg: null, board: null, route: { name: '', arg: '' },
-    isHR() { return API.me && API.me.role === 'h'; },
+    isHR() { return API.isHR(); },
+    isAdmin() { return API.isAdmin(); },
 
     async boot() {
-      // 🔗 An applicant's invite link: ?invite=<code> signs them in, then leaves the address bar.
+      // 🔗 An applicant's one-time link: ?invite=<code> signs them in (the link is then used up) and leaves the address bar.
       const q = new URLSearchParams(location.search);
       const invite = q.get('invite');
       if (invite) {
@@ -22,7 +24,8 @@
         try { API.signOut(); API.signIn(await API.post('/api/auth/invite', { code: invite })); }
         catch (e) { return App.gate(e.message); }
       }
-      if (!API.token) return App.gate();
+      let msg = ''; try { msg = sessionStorage.getItem('hrmc_msg') || ''; sessionStorage.removeItem('hrmc_msg'); } catch (e) {}
+      if (!API.token) return App.gate(msg);
       try { App.cfg = await API.post('/api/config'); }
       catch (e) { return App.gate(e.status === 401 ? '' : e.message); }
       App.connect();
@@ -38,20 +41,21 @@
       $app().innerHTML = `<div class="gate"><div class="card">
         <h1>LSH HR Mock Calls</h1>
         ${error ? `<p class="badge red" style="display:block;padding:8px 10px;border-radius:10px">${esc(error)}</p>` : ''}
-        <p class="muted"><b>Applicants:</b> open the interview link HR sent you. It signs you in to your phone.</p>
+        <p class="muted"><b>Applicants:</b> open the interview link HR sent you. It works <b>once</b>: it signs you in to your phone for this interview. Keep that browser tab open.</p>
         <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
-        <h3>HR sign-in</h3>
+        <h3>HR &amp; Admin sign-in</h3>
         <form id="hrForm">
-          <label class="f" for="hrName">Your name</label><input type="text" id="hrName" autocomplete="name" maxlength="40" required>
-          <label class="f" for="hrPass">HR passphrase</label><input type="password" id="hrPass" autocomplete="current-password" required>
+          <label class="f" for="hrName">Username</label><input type="text" id="hrName" autocomplete="username" maxlength="40" required>
+          <label class="f" for="hrPass">Password</label><input type="password" id="hrPass" autocomplete="current-password" required>
+          <p class="tiny muted" style="margin:6px 0 0">Admin: type your name and the admin passphrase.</p>
           <div class="row" style="margin-top:14px"><button class="btn primary" type="submit">Sign in</button></div>
         </form></div></div>`;
       try { document.getElementById('hrName').value = localStorage.getItem('hrmc_name') || ''; } catch (e) {}
       document.getElementById('hrForm').onsubmit = async (ev) => {
         ev.preventDefault();
-        const name = document.getElementById('hrName').value.trim(), passphrase = document.getElementById('hrPass').value;
+        const name = document.getElementById('hrName').value.trim(), password = document.getElementById('hrPass').value;
         try {
-          API.signIn(await API.post('/api/auth/hr', { name, passphrase }));
+          API.signIn(await API.post('/api/auth/staff', { username: name, password }));
           try { localStorage.setItem('hrmc_name', name); } catch (e) {}
           location.hash = '#/console';
           location.reload();
@@ -72,7 +76,7 @@
       const net = document.getElementById('netbar');
       b.on('up', () => net.classList.add('hidden'));
       b.on('down', (m) => {
-        if (m.code === 4001) { API.signOut(); return App.gate('This interview link was closed by HR.'); }
+        if (m.code === 4001) { const msg = App.isHR() ? 'Your account was disabled by the admin.' : 'Your interview session was ended by HR.'; b.close(); API.signOut(); return App.gate(msg); }
         net.classList.remove('hidden');
       });
       // A refused line may mean the sign-in ended: ask the API, which signs out on a 401.
@@ -88,18 +92,19 @@
       const hr = App.isHR();
       let name = h[0] || (hr ? 'console' : 'phone');
       if (!hr) name = 'phone';
-      else if (!['console', 'applicants', 'calls', 'call'].includes(name)) name = 'console';
+      else if (!['console', 'applicants', 'calls', 'call'].concat(App.isAdmin() ? ['admin'] : []).includes(name)) name = 'console';
       App.route = { name, arg: h[1] || '' };
-      const items = hr ? [['console', '🎛 Console'], ['applicants', '👥 Applicants'], ['calls', '🗂 Call Logs']] : [['phone', '☎ My phone']];
+      const items = hr ? [['console', '🎛 Console'], ['applicants', '👥 Applicants'], ['calls', '🗂 Call Logs']].concat(App.isAdmin() ? [['admin', '🛡 Admin']] : []) : [['phone', '☎ My phone']];
       document.getElementById('nav').innerHTML = items.map(([k, label]) => `<a href="#/${k}" class="${k === name || (k === 'calls' && name === 'call') ? 'on' : ''}">${label}</a>`).join('');
       const me = API.me || {};
-      document.getElementById('who').innerHTML = `<span class="chip">${hr ? '🧑‍💼 HR' : '👤 Applicant'} · ${esc(me.name)}</span><button type="button" id="signOut">Sign out</button>`;
+      document.getElementById('who').innerHTML = `<span class="chip">${App.isAdmin() ? '🛡 Admin' : hr ? '🧑‍💼 HR' : '👤 Applicant'} · ${esc(me.name)}</span><button type="button" id="signOut">Sign out</button>`;
       document.getElementById('signOut').onclick = App.signOut;
       if (name === 'console') return HR.render($app());
       if (name === 'phone') return Applicant.render($app());
       if (name === 'applicants') return Pages.applicants($app());
       if (name === 'calls') return Pages.calls($app());
       if (name === 'call') return Pages.call($app(), App.route.arg);
+      if (name === 'admin') return Admin.render($app());
     },
 
     // 🎧 Audio check: the microphone level, and a test tone in the headset.
@@ -144,7 +149,7 @@
   const Pages = {
     async applicants(el) {
       el.innerHTML = `<div class="card"><h2>👥 Applicants</h2>
-        <p class="muted small">Add an applicant to give them a desk extension and an interview link. They open the link in Chrome or Edge on a computer with a headset; their phone signs in and you can ring it from 🎛 Console. A link works for ${App.cfg.features.inviteDays} days; ↻ New link replaces it, ⛔ Close link signs them out.</p>
+        <p class="muted small">Add an applicant to give them a desk extension and a <b>one-time interview link</b>. They open it in Chrome or Edge on a computer with a headset: it signs them in to their phone for one session (${App.cfg.features.sessionHours} h) and can't be used again. An unopened link lasts ${App.cfg.features.linkHours} h. ↻ New link replaces it (and ends any session); ⛔ End session signs them out.</p>
         <form id="addAp" class="row" style="align-items:end">
           <div style="flex:2;min-width:180px"><label class="f" for="apName">Applicant's name</label><input type="text" id="apName" maxlength="60" required></div>
           <div style="flex:2;min-width:160px"><label class="f" for="apPos">Position applied for</label><input type="text" id="apPos" maxlength="60" placeholder="e.g. Receptionist"></div>
@@ -166,25 +171,33 @@
         try { list = (await API.post('/api/applicants')).applicants; } catch (e) { return U.toast(e.message, 'error'); }
         const box = el.querySelector('#apList'); if (!box) return;
         if (!list.length) { box.innerHTML = '<div class="empty">No applicants yet. Add one above.</div>'; return; }
-        box.innerHTML = `<table class="t"><thead><tr><th>Ext</th><th>Applicant</th><th>Position</th><th>Interview link</th><th>Calls</th><th>Avg score</th><th>Last seen</th><th></th></tr></thead><tbody>
+        const LINK = { unused: ['blue', 'Not opened yet'], 'in-session': ['green', 'In session'], used: ['', 'Used'], expired: ['amber', 'Expired'], closed: ['', 'Ended'] };
+        box.innerHTML = `<table class="t"><thead><tr><th>Ext</th><th>Applicant</th><th>Position</th><th>One-time link</th><th>Calls</th><th>Avg score</th><th>Last seen</th><th></th></tr></thead><tbody>
           ${list.map((a) => {
-            const expired = a.invite_exp < Date.now();
-            return `<tr><td class="mono"><b>${esc(a.ext)}</b></td><td><b>${esc(a.name)}</b>${a.archived ? ' <span class="badge">closed</span>' : ''}</td><td>${esc(a.position || '—')}</td>
-            <td>${a.archived ? '<span class="muted small">closed</span>' : `<div class="linkbox"><input type="text" readonly value="${esc(App.inviteLink(a.invite))}"><button class="btn small" data-copy="${esc(a.invite)}">Copy</button></div>
-              <div class="tiny ${expired ? '' : 'muted'}" style="${expired ? 'color:var(--red)' : ''}">${expired ? 'Expired' : 'Valid until'} ${esc(U.when(a.invite_exp))}</div>`}</td>
-            <td>${a.calls || 0}</td><td>${a.avg != null ? (Math.round(a.avg * 10) / 10) + ' / 5' : '—'}</td><td class="small">${a.last_seen ? esc(U.when(a.last_seen)) : '<span class="muted">never</span>'}</td>
+            const [c, label] = LINK[a.link] || ['', a.link];
+            return `<tr><td class="mono"><b>${esc(a.ext)}</b></td><td><b>${esc(a.name)}</b><div class="tiny muted">added by ${esc(a.createdBy || '—')}</div></td><td>${esc(a.position || '—')}</td>
+            <td><span class="badge ${c}">${label}</span>
+              ${a.link === 'unused' ? `<div class="linkbox" style="margin-top:4px"><input type="text" readonly value="${esc(App.inviteLink(a.invite))}"><button class="btn small" data-copy="${esc(a.invite)}">Copy</button></div><div class="tiny muted">Unused link valid until ${esc(U.when(a.inviteExp))}</div>` : ''}
+              ${a.link === 'in-session' ? `<div class="tiny muted">Opened ${esc(U.when(a.usedAt))} · session until ${esc(U.when(a.sessionExp))}</div>` : ''}
+              ${a.link === 'used' ? `<div class="tiny muted">Opened ${esc(U.when(a.usedAt))}</div>` : ''}</td>
+            <td>${a.calls || 0}</td><td>${a.avg != null ? (Math.round(a.avg * 10) / 10) + ' / 5' : '—'}</td><td class="small">${a.lastSeen ? esc(U.when(a.lastSeen)) : '<span class="muted">never</span>'}</td>
             <td class="row" style="flex-wrap:nowrap"><button class="btn small" data-renew="${esc(a.id)}">↻ New link</button>
-              ${a.archived ? '' : `<button class="btn small" data-close="${esc(a.id)}">⛔ Close link</button>`}
-              <a class="btn small" href="#/calls/${esc(a.id)}">Calls</a></td></tr>`;
+              ${a.link === 'unused' || a.link === 'in-session' ? `<button class="btn small" data-close="${esc(a.id)}">⛔ ${a.link === 'unused' ? 'Cancel link' : 'End session'}</button>` : ''}
+              <a class="btn small" href="#/calls/${esc(a.id)}">Calls</a>
+              ${App.isAdmin() ? `<button class="btn small red" data-del="${esc(a.id)}" title="Delete the applicant, their calls and recordings">🗑</button>` : ''}</td></tr>`;
           }).join('')}</tbody></table>`;
         box.querySelectorAll('[data-copy]').forEach((b) => { b.onclick = () => App.copy(App.inviteLink(b.dataset.copy)); });
         box.querySelectorAll('[data-renew]').forEach((b) => { b.onclick = async () => {
-          if (!confirm('Make a new link? The old one stops working.')) return;
+          if (!confirm('Make a new one-time link? The old link stops working and any open session ends.')) return;
           try { const r = await API.post('/api/applicants/renew', { id: b.dataset.renew }); await App.copy(App.inviteLink(r.applicant.invite)); draw(); } catch (e) { U.toast(e.message, 'error'); }
         }; });
         box.querySelectorAll('[data-close]').forEach((b) => { b.onclick = async () => {
-          if (!confirm('Close this link? The applicant is signed out and can\'t open the phone again until you make a new link.')) return;
+          if (!confirm('End this applicant\'s access? They are signed out and need a new link to come back.')) return;
           try { await API.post('/api/applicants/archive', { id: b.dataset.close, archived: true }); draw(); } catch (e) { U.toast(e.message, 'error'); }
+        }; });
+        box.querySelectorAll('[data-del]').forEach((b) => { b.onclick = async () => {
+          if (!confirm('Delete this applicant, every call of theirs and the recordings? This can\'t be undone.')) return;
+          try { const r = await API.post('/api/admin/applicant/delete', { id: b.dataset.del }); U.toast(`Deleted, with ${r.calls} call(s).`, 'ok'); draw(); } catch (e) { U.toast(e.message, 'error'); }
         }; });
       };
       draw();
@@ -222,7 +235,7 @@
       try { c = (await API.post('/api/call', { id })).call; } catch (e) { el.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
       const m = c.metrics || {}, s = c.scenario || {}, rv = c.review || {};
       const holds = (m.holds || []).length, tx = m.transfers || [];
-      el.innerHTML = `<div class="card"><div class="row"><a class="btn small" href="#/calls">← Call Logs</a><span class="spacer"></span><button class="btn small red" id="del">🗑 Delete call</button></div>
+      el.innerHTML = `<div class="card"><div class="row"><a class="btn small" href="#/calls">← Call Logs</a><span class="spacer"></span>${App.isAdmin() ? '<button class="btn small red" id="del">🗑 Delete call</button>' : ''}</div>
           <h2 style="margin-top:12px">${c.mode === 'ai' ? '🤖 ' : '🎙 '}${esc(c.title)}</h2>
           <div class="row small"><b>${esc(c.applicantName)}</b>${c.position ? `<span class="muted">· ${esc(c.position)}</span>` : ''}<span class="muted">· ${esc(U.when(c.createdAt))} · by ${esc(c.hr)}</span>${App.statusBadge(c.status)}</div>
           <div class="row small muted" style="margin-top:6px">
@@ -250,7 +263,7 @@
         try { await API.post('/api/call/update', { id, review: { score, verdict: el.querySelector('#verdict').value, notes: el.querySelector('#notes').value } }); U.toast('Saved.', 'ok'); }
         catch (e) { U.toast(e.message, 'error'); }
       };
-      el.querySelector('#del').onclick = async () => {
+      if (el.querySelector('#del')) el.querySelector('#del').onclick = async () => {
         if (!confirm('Delete this call and its recording? This can\'t be undone.')) return;
         try { await API.post('/api/call/delete', { id }); App.nav('#/calls'); } catch (e) { U.toast(e.message, 'error'); }
       };
@@ -267,6 +280,78 @@
     }
   };
 
+  /* =========================================================
+     🛡 Admin (the admin passphrase only): the system on its own,
+     apart from the training platform.
+       👤 HR accounts   who can sign in to interview, each with a password
+       ⚙️ Settings      how long a one-time link and a session last
+       🩺 Status        what's set up (TURN, the agent caller, recordings)
+     Deleting applicants is on 👥 Applicants (🗑), admin only.
+     ========================================================= */
+  const Admin = {
+    async render(el) {
+      el.innerHTML = '<div class="empty">Loading…</div>';
+      let d;
+      try { d = await API.post('/api/admin/overview'); } catch (e) { el.innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return; }
+      const st = d.stats, set = d.setup, ok = (v) => v ? '<span class="badge green">On</span>' : '<span class="badge amber">Off</span>';
+      el.innerHTML = `<div class="card"><h2>🛡 Admin</h2><p class="muted small">LSH HR Mock Calls runs on its own, apart from the LSH training platform: its own sign-in, its own HR accounts and one-time links for applicants.</p>
+          <div class="row small" style="gap:18px"><span><b>${st.applicants}</b> applicants</span><span><b>${st.online}</b> applicant phones open</span><span><b>${st.hrOnline}</b> HR online</span>
+            <span><b>${st.liveNow}</b> calls now</span><span><b>${st.calls}</b> calls in all</span><span><b>${st.unscored}</b> not scored</span><span><b>${st.hrUsers}</b> HR accounts</span></div></div>
+        <div class="cols2">
+          <div>
+            <div class="card"><h3>👤 Add or update an HR account</h3>
+              <form id="hrSave">
+                <label class="f" for="uName">Name (shown on calls)</label><input type="text" id="uName" maxlength="40" required>
+                <label class="f" for="uUser">Username</label><input type="text" id="uUser" maxlength="30" required autocomplete="off" placeholder="e.g. jsmith">
+                <label class="f" for="uPass">Password (at least 8 characters; leave empty to keep it)</label><input type="password" id="uPass" autocomplete="new-password">
+                <div class="row" style="margin-top:12px"><button class="btn primary" type="submit">💾 Save account</button></div></form></div>
+            <div class="card"><h3>⚙️ Settings</h3>
+              <form id="setSave">
+                <label class="f" for="sLink">An unopened one-time link works for (hours)</label><input type="number" id="sLink" min="1" max="720" value="${d.settings.linkHours}">
+                <label class="f" for="sSess">An applicant's session lasts (hours, after the link is opened)</label><input type="number" id="sSess" min="1" max="24" value="${d.settings.sessionHours}">
+                <div class="row" style="margin-top:12px"><button class="btn primary" type="submit">💾 Save settings</button></div></form></div>
+            <div class="card"><h3>🩺 Status</h3><table class="t"><tbody>
+              <tr><td>TURN relay (calls through strict networks)</td><td>${ok(set.turn)}${set.turnError ? `<div class="tiny muted">${esc(set.turnError)}</div>` : ''}</td></tr>
+              <tr><td>🤖 Agent caller (Gemini keys)</td><td>${ok(set.ai)} <span class="tiny muted">up to ${set.aiMinutes} min a call</span></td></tr>
+              <tr><td>Recordings (LSH_KV)</td><td>${ok(set.recordings)} <span class="tiny muted">kept ${set.recordingDays} days</span></td></tr>
+              <tr><td>SESSION_SECRET</td><td>${ok(set.sessionSecret)} <span class="tiny muted">${set.sessionSecret ? '' : 'tokens are signed with the admin passphrase'}</span></td></tr></tbody></table></div>
+          </div>
+          <div class="card"><h3>👤 HR accounts</h3><p class="tiny muted">HR interviewers sign in with their username and password. The admin signs in with the admin passphrase (ADMIN_PASSPHRASE).</p>
+            <div class="tablewrap">${d.hrUsers.length ? `<table class="t"><thead><tr><th>Name</th><th>Username</th><th>Last sign-in</th><th>State</th><th></th></tr></thead><tbody>
+              ${d.hrUsers.map((u) => `<tr><td><b>${esc(u.name)}</b></td><td class="mono">${esc(u.username)}</td><td class="small">${u.last_login ? esc(U.when(u.last_login)) : '<span class="muted">never</span>'}</td>
+                <td>${u.disabled ? '<span class="badge">Disabled</span>' : '<span class="badge green">Active</span>'}</td>
+                <td class="row" style="flex-wrap:nowrap"><button class="btn small" data-edit="${esc(u.username)}" data-name="${esc(u.name)}">✎</button>
+                  <button class="btn small" data-toggle="${esc(u.username)}" data-on="${u.disabled ? 1 : 0}">${u.disabled ? 'Enable' : 'Disable'}</button>
+                  <button class="btn small red" data-rm="${esc(u.username)}">🗑</button></td></tr>`).join('')}</tbody></table>` : '<p class="muted small">No HR accounts yet. Add one on the left.</p>'}</div></div>
+        </div>`;
+      const again = () => Admin.render(el);
+      el.querySelector('#hrSave').onsubmit = async (ev) => {
+        ev.preventDefault();
+        try {
+          await API.post('/api/admin/hr/save', { name: el.querySelector('#uName').value, username: el.querySelector('#uUser').value, password: el.querySelector('#uPass').value });
+          U.toast('Account saved.', 'ok'); again();
+        } catch (e) { U.toast(e.message, 'error'); }
+      };
+      el.querySelector('#setSave').onsubmit = async (ev) => {
+        ev.preventDefault();
+        try {
+          const r = await API.post('/api/admin/settings', { settings: { linkHours: el.querySelector('#sLink').value, sessionHours: el.querySelector('#sSess').value } });
+          Object.assign(App.cfg.features, r.settings);
+          U.toast('Settings saved.', 'ok'); again();
+        } catch (e) { U.toast(e.message, 'error'); }
+      };
+      el.querySelectorAll('[data-edit]').forEach((b) => { b.onclick = () => { el.querySelector('#uName').value = b.dataset.name; el.querySelector('#uUser').value = b.dataset.edit; el.querySelector('#uPass').focus(); }; });
+      el.querySelectorAll('[data-toggle]').forEach((b) => { b.onclick = async () => {
+        try { await API.post('/api/admin/hr/save', { username: b.dataset.toggle, disabled: b.dataset.on !== '1' }); again(); } catch (e) { U.toast(e.message, 'error'); }
+      }; });
+      el.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = async () => {
+        if (!confirm(`Delete the account ${b.dataset.rm}? Their calls stay in the Call Logs.`)) return;
+        try { await API.post('/api/admin/hr/delete', { username: b.dataset.rm }); again(); } catch (e) { U.toast(e.message, 'error'); }
+      }; });
+    }
+  };
+
   window.App = App;
   window.Pages = Pages;
+  window.Admin = Admin;
 })();

@@ -14,14 +14,15 @@
     get me() { return memMe; },
     signIn(res) { memToken = res.token; memMe = { role: res.role, id: res.id, name: res.name, position: res.position || '' }; store.set(K_TOKEN, memToken); store.set(K_ME, JSON.stringify(memMe)); },
     signOut() { memToken = null; memMe = null; store.set(K_TOKEN, null); store.set(K_ME, null); },
-    isHR() { return !!memMe && memMe.role === 'a'; },
+    isHR() { return !!memMe && (memMe.role === 'h' || memMe.role === 'a'); },
+    isAdmin() { return !!memMe && memMe.role === 'a'; },
     async post(path, body) {
       let res;
       try {
         res = await fetch(path, { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, memToken ? { Authorization: 'Bearer ' + memToken } : {}), body: JSON.stringify(body || {}) });
       } catch (e) { throw new Error('Can\'t reach the server. Check your internet connection.'); }
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401 && memToken && !/^\/api\/auth\//.test(path)) { API.signOut(); location.hash = '#/'; location.reload(); }
+      if (res.status === 401 && memToken && !/^\/api\/auth\//.test(path)) { try { sessionStorage.setItem('hrmc_msg', data.error || ''); } catch (e) {} API.signOut(); location.hash = '#/'; location.reload(); }
       if (!res.ok) { const e = new Error(data.error || `Error ${res.status}`); e.status = res.status; e.code = data.code; throw e; }
       return data;
     },
