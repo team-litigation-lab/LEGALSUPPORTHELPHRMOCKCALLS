@@ -11,13 +11,12 @@ It is cloned from **LSH Ring Channel**'s phone system (the Switchboard, the WebR
 
 Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudflare Worker with one Durable Object (the Switchboard). The audio goes straight between the two browsers over WebRTC, through a TURN relay when a network blocks direct audio.
 
-## The main page and the two views
+## Two views: each side sees only its own sign-in
 
-**The main page (`/`)** has both ways in, side by side:
-- **👤 Applicant:** the interview code and their full name. With their **one-time link** (`/?invite=…`) they only see **"Welcome to your interview — your full name — Enter →"**: they type their name and they're on their phone.
-- **🧑‍💼 HR & Admin:** username and password (the admin: any name and the admin passphrase). Signing in here goes on to `/admin`.
-
-**`/admin`** is the Admin & HR view on its own: its sign-in, then 🎛 Console, 👥 Applicants, 🗂 Call Logs and (admin) 🛡 Admin. Kept out of search engines.
+| Address | Who | What it shows |
+|---|---|---|
+| **`/`** (the main address) | 👤 Applicants only | With their **one-time link** (`/?invite=…`): **"Welcome to your interview — your full name — Enter →"**. Without it: the interview code and their full name. **No HR or admin sign-in.** |
+| **`/admin`** | 🛡 Admin and 🧑‍💼 HR only | The **Admin & HR sign-in**, then 🎛 Console, 👥 Applicants, 🗂 Call Logs and (admin) 🛡 Admin. **No applicant sign-in.** Kept out of search engines. |
 
 Each view keeps its own sign-in in the browser, so an admin can open a test applicant link on the same computer without being signed out of `/admin`. An interview link opened on `/admin` goes to `/`. `public/index.html` and `public/admin.html` are the two pages; they share the same scripts (`window.HRMC_VIEW` says which view it is).
 

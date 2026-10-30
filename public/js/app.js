@@ -39,9 +39,9 @@
 
     /* ---------- sign-in ---------- */
     /* The sign-in pages.
-       /       the applicant's: with their link, just their name; without it, the interview code and their name
-               side by side with the HR & Admin sign-in (a staff sign-in there goes on to /admin);
-       /admin  HR's and the admin's sign-in only. */
+       /       applicants only: with their link, just their name; without it, the interview code and their name.
+       /admin  HR's and the admin's sign-in only.
+       Neither shows the other's sign-in. */
     gate(error, invite) {
       document.getElementById('nav').innerHTML = '';
       document.getElementById('who').innerHTML = '';
@@ -61,11 +61,10 @@
             <p class="tiny muted" style="margin:6px 0 0">Use Chrome or Edge on a computer, with a headset. This link works once: keep this tab open until HR tells you the interview is over.</p>
             <div class="row" style="margin-top:14px"><button class="btn primary" type="submit">Enter →</button></div></form></div></div>`;
       } else if (API.view !== 'staff') {
-        $app().innerHTML = `<div class="gate wide">${logo}${err}<div class="gate-cols">
-          <div class="card"><h2>👤 Applicant</h2><p class="small muted">Open the interview link HR sent you, or type the code from it.</p>
-            <form id="enterForm"><label class="f" for="apCode">Interview code</label><input type="text" id="apCode" maxlength="40" required autocomplete="off" placeholder="e.g. 9hcwhb5yczn4">
-              ${nameField}<div class="row" style="margin-top:14px"><button class="btn primary" type="submit">Enter →</button></div></form></div>
-          ${staffCard}</div></div>`;
+        $app().innerHTML = `<div class="gate"><div class="card">${logo}<h1>Your interview mock call</h1>${err}
+          <p class="small muted">Open the interview link HR sent you, or type the code from it.</p>
+          <form id="enterForm"><label class="f" for="apCode">Interview code</label><input type="text" id="apCode" maxlength="40" required autocomplete="off" placeholder="e.g. 9hcwhb5yczn4">
+            ${nameField}<div class="row" style="margin-top:14px"><button class="btn primary" type="submit">Enter →</button></div></form></div></div>`;
       } else $app().innerHTML = `<div class="gate">${logo}${err}${staffCard.replace('🧑‍💼 HR &amp; Admin', 'Admin &amp; HR sign-in')}</div>`;
       const enter = document.getElementById('enterForm');
       if (enter) enter.onsubmit = async (ev) => {
@@ -78,6 +77,7 @@
         } catch (e) { U.toast(e.message, 'error'); }
       };
       const staff = document.getElementById('hrForm');
+      if (!staff) return;
       try { document.getElementById('hrName').value = localStorage.getItem('hrmc_name') || ''; } catch (e) {}
       staff.onsubmit = async (ev) => {
         ev.preventDefault();
@@ -85,7 +85,6 @@
         try {
           const res = await API.post('/api/auth/staff', { username: name, password });
           try { localStorage.setItem('hrmc_name', name); } catch (e) {}
-          if (API.view !== 'staff') { API.keepForStaff(res); location.href = '/admin#/console'; return; }
           API.signIn(res);
           location.hash = '#/console';
           location.reload();

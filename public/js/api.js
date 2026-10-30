@@ -15,8 +15,6 @@
     get token() { return memToken; },
     get me() { return memMe; },
     signIn(res) { memToken = res.token; memMe = { role: res.role, id: res.id, name: res.name, position: res.position || '' }; store.set(K_TOKEN, memToken); store.set(K_ME, JSON.stringify(memMe)); },
-    // A staff sign-in made on the applicant's page (/) is kept for /admin, where it's used.
-    keepForStaff(res) { store.set('hrmc_staff_token', res.token); store.set('hrmc_staff_me', JSON.stringify({ role: res.role, id: res.id, name: res.name, position: '' })); },
     signOut() { memToken = null; memMe = null; store.set(K_TOKEN, null); store.set(K_ME, null); },
     isHR() { return !!memMe && (memMe.role === 'h' || memMe.role === 'a'); },
     isAdmin() { return !!memMe && memMe.role === 'a'; },

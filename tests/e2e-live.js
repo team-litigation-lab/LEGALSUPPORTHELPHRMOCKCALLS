@@ -27,19 +27,17 @@ async function main() {
   await adm.screenshot({ path: shots + '/00-admin.png' });
   step('admin signed in and made an HR account');
 
-  // The main page (/) has both: the applicant's entry (code and name) and the HR & Admin sign-in, which goes on to /admin.
+  // Each side sees only its own sign-in: the applicant's on /, HR's and the admin's on /admin.
   const plain = await (await browser.newContext()).newPage();
   await plain.goto(BASE + '/');
   await plain.waitForSelector('#apCode');
-  await plain.waitForSelector('#hrForm');
+  if (await plain.$('#hrForm')) throw new Error('the applicant page shows the HR & Admin sign-in');
   await plain.screenshot({ path: shots + '/00-main-page.png' });
-  await plain.fill('#hrName', 'Site Admin');
-  await plain.fill('#hrPass', PASS);
-  await plain.click('#hrForm button[type=submit]');
-  await plain.waitForURL(/\/admin/);
-  await plain.waitForSelector('#presence');
+  await plain.goto(BASE + '/admin');
+  await plain.waitForSelector('#hrForm');
+  if (await plain.$('#apCode') || await plain.$('#apEnterName')) throw new Error('the admin page shows the applicant sign-in');
   await plain.context().close();
-  step('the main page has both entries; a staff sign-in there opens /admin');
+  step('applicants see only their sign-in on /, HR & Admin only theirs on /admin');
 
   const ctx = (await browser.newContext({ permissions: ['microphone'], viewport: { width: 1400, height: 900 } }));
   const hr = await ctx.newPage();
