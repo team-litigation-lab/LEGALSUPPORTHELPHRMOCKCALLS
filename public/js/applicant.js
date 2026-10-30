@@ -26,7 +26,7 @@
     el = root;
     el.innerHTML = `<div class="cols2">
       <div>
-        <div class="phone" id="phone"><div class="screen" id="screen"></div><div id="keys"></div><div id="transferBox"></div></div>
+        <div class="phone" id="phone"><div class="phone-brand"><img src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397"><div class="pb-sub">HR Mock Calls · My phone</div></div><div class="screen" id="screen"></div><div id="keys"></div><div id="transferBox"></div></div>
         <div class="card" id="audioBox" style="margin-top:16px"></div>
       </div>
       <div id="side"></div>
@@ -51,7 +51,7 @@
     box.innerHTML = `<div class="line">${esc(p.lineLabel || cfg.company.line)} ${esc(p.lineNumber || '')}</div>
       <div class="big">${esc(p.callerId.name)}</div><div>${esc(p.callerId.number || '')}</div>
       <div style="margin-top:6px">${esc(state)} <span id="clock">${esc(time)}</span></div>
-      <div class="tags">${p.rec ? '<span class="tag rec">● RECORDED</span>' : ''}${p.muted ? '<span class="tag">MUTED</span>' : ''}${p.held ? '<span class="tag">ON HOLD</span>' : ''}
+      <div class="tags">${p.rec ? '<span class="tag rec">● RECORDED</span>' : p.recPaused ? '<span class="tag">RECORDING PAUSED</span>' : ''}${p.muted ? '<span class="tag">MUTED</span>' : ''}${p.held ? '<span class="tag">ON HOLD</span>' : ''}
         ${VoIP.Speaker.on ? '<span class="tag">🔊 SPEAKER</span>' : ''}${p.peerLost ? '<span class="tag">caller reconnecting…</span>' : ''}${p.typed ? '<span class="tag">TYPED CALL</span>' : ''}</div>`;
   }
   setInterval(() => { const p = Applicant.p; if (on() && p && p.status === 'live') { const c = el.querySelector('#clock'); if (c) c.textContent = U.since(p.answeredAt); } }, 1000);
@@ -379,6 +379,7 @@
         if (m.result !== 'connected') Sounds.beep();
         renderTransfer();
         return;
+      case 'rec': if (mine) { p.rec = !!m.on; p.recPaused = !m.on; renderScreen(); } return;
       case 'peer-lost': if (mine) { p.peerLost = true; renderScreen(); } return;
       case 'peer-back': if (mine) { p.peerLost = false; renderScreen(); } return;
       case 'ended': if (mine && p.mode === 'live') endLive(m); return;

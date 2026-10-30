@@ -69,6 +69,7 @@ async function main() {
   await hr.goto(BASE + '/#/console');
   await hr.waitForSelector(`#presence [data-ext="${ext}"]`);
   await hr.click(`#presence [data-ext="${ext}"]`);
+  if (!/Record the call: ON/.test(await hr.textContent('#kRec'))) throw new Error('recording should be on by default');
   await hr.fill('#cName', 'Dana Price');
   await hr.click('#kCall');
   await ap.waitForSelector('#kAns', { timeout: 10000 });
@@ -85,6 +86,14 @@ async function main() {
   await hr.waitForFunction(() => /ON HOLD/.test(document.querySelector('#screen').textContent));
   await ap.click('#kHold');
   step('hold and resume');
+
+  // ⏺ The record key: pause, the applicant sees it, resume.
+  await hr.waitForFunction(() => /● REC/.test(document.querySelector('#screen').textContent));
+  await hr.click('#kRec');
+  await ap.waitForFunction(() => /RECORDING PAUSED/.test(document.querySelector('#screen').textContent));
+  await hr.click('#kRec');
+  await ap.waitForFunction(() => /RECORDED/.test(document.querySelector('#screen').textContent) && !/PAUSED/.test(document.querySelector('#screen').textContent));
+  step('record key: pause and resume, shown on the applicant phone');
 
   await ap.click('#kTx');
   await ap.click('#transferBox [data-ext="201"]');

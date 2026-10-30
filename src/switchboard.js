@@ -365,6 +365,12 @@ export class Switchboard extends DurableObject {
         this.send(this.peerOf(r, 'c'), { t: 'hold', callId: r.id, on: !!m.on, at: t });
         return;
       }
+      case 'rec':   // HR's ⏺ key: the call is (or isn't any more) being recorded
+        if (!party || me.role !== 'h' || r.status !== 'live') return;
+        r.data.record = r.data.record || !!m.on;
+        this.setLive(r, { recording: !!m.on }); this.save(r);
+        this.send(this.peerOf(r, 'h'), { t: 'rec', callId: r.id, on: !!m.on });
+        return;
       case 'mute':
         if (!party || r.status !== 'live') return;
         this.setLive(r, me.role === 'c' ? { applicantMuted: !!m.on } : { hrMuted: !!m.on }); this.save(r);

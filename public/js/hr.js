@@ -47,6 +47,7 @@
       </div>
       <div>
         <div class="phone" id="phone">
+          <div class="phone-brand"><img src="lsh-logo-dark.png" alt="Legal Support Help" width="646" height="397"><div class="pb-sub">HR Mock Calls · Dialer</div></div>
           <div class="screen" id="screen"></div>
           <div id="dialPad"></div>
           <div class="callkeys" id="callKeys"></div>
@@ -58,7 +59,6 @@
               <div style="flex:1;min-width:120px"><label class="f" for="cNum">Caller ID number</label><input type="text" id="cNum" maxlength="30" placeholder="(555) 012-3456" value="${esc(s.callerNumber)}"></div>
             </div>
             <label class="check"><input type="checkbox" id="withhold" ${s.withhold ? 'checked' : ''}> 🙈 Hide caller ID (PRIVATE CALLER)</label>
-            <label class="check"><input type="checkbox" id="record" ${s.record && f.recordings ? 'checked' : ''} ${f.recordings ? '' : 'disabled'}> ⏺ Record live calls${f.recordings ? '' : ' (needs the LSH_KV binding)'}</label>
             <details id="aiSetup" ${s.persona ? 'open' : ''} style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">🤖 Agent caller setup${f.ai ? '' : ' (off: no Gemini key)'}</summary>
               <label class="f" for="persona">Who the AI plays (used when no scenario is picked)</label>
               <textarea id="persona" rows="5" maxlength="6000" placeholder="e.g. Maria, a client of the firm. Her car accident case is open; she wants to know when her next appointment is and is a little impatient. DOB 03/14/1985.">${esc(s.persona)}</textarea>
@@ -79,7 +79,7 @@
     App.audioCheck(el.querySelector('#audioBox'));
     const bind = (id, k, ev, val) => { const x = el.querySelector('#' + id); x.addEventListener(ev || 'input', () => { HR.setup[k] = val ? val(x) : x.value; saveSetup(); renderScreen(); }); };
     bind('scen', 'scenarioId', 'change'); bind('cName', 'callerName'); bind('cNum', 'callerNumber');
-    bind('withhold', 'withhold', 'change', (x) => x.checked); bind('record', 'record', 'change', (x) => x.checked);
+    bind('withhold', 'withhold', 'change', (x) => x.checked);
     bind('persona', 'persona'); bind('opening', 'opening'); bind('gender', 'gender', 'change'); bind('voice', 'voice', 'change');
     el.querySelector('#aiRefresh').onclick = loadAi;
     renderPresence(); renderPad(); renderScreen(); renderKeys(); renderLive(); loadAi();
@@ -132,7 +132,7 @@
       const time = t.status === 'live' && t.answeredAt ? U.since(t.answeredAt) : t.status === 'ringing' ? U.ringText(t.createdAt) : '';
       box.innerHTML = `<div class="line">${esc(App.cfg.company.line)} → ext ${esc(a.ext || '')}</div><div class="big">${esc(a.name || '')}</div>
         <div>${esc(state)} <span id="clock">${esc(time)}</span></div>
-        <div class="tags">${t.record ? '<span class="tag rec">● REC</span>' : ''}${t.muted ? '<span class="tag">MUTED</span>' : ''}${t.appHeld ? '<span class="tag">ON HOLD (applicant)</span>' : ''}${t.appMuted ? '<span class="tag">APPLICANT MUTED</span>' : ''}
+        <div class="tags">${t.rec && !t.recPaused ? '<span class="tag rec">● REC</span>' : t.rec ? '<span class="tag">⏸ REC PAUSED</span>' : t.record ? '<span class="tag rec">● REC (starts on answer)</span>' : ''}${t.muted ? '<span class="tag">MUTED</span>' : ''}${t.appHeld ? '<span class="tag">ON HOLD (applicant)</span>' : ''}${t.appMuted ? '<span class="tag">APPLICANT MUTED</span>' : ''}
           ${t.peerLost ? '<span class="tag">applicant reconnecting…</span>' : ''}${t.quality ? `<span class="tag">${'▮'.repeat(t.quality.bars)}${'▯'.repeat(4 - t.quality.bars)}${t.quality.relay ? ' relay' : ''}</span>` : ''}</div>
         <div class="tiny" style="margin-top:6px">Caller ID shown: ${esc(t.callerId ? `${t.callerId.name} ${t.callerId.number}` : '')}</div>`;
       return;
@@ -148,15 +148,21 @@
     const box = on() && el.querySelector('#callKeys'); if (!box) return;
     const t = HR.t;
     if (t && t.status !== 'ended') {
+      const recLabel = !t.rec ? (t.status === 'live' ? '⏺ Record' : t.record ? '⏺ Rec on' : '⏺ Rec off') : t.recPaused ? '⏺ Resume rec' : '⏸ Pause rec';
       box.innerHTML = `<button class="pkey ${t.muted ? 'on' : ''}" id="kMute" ${t.status === 'live' ? '' : 'disabled'}>${t.muted ? '🔇 Unmute' : '🎙 Mute'}</button>
         <button class="pkey ${VoIP.Speaker.on ? 'on' : ''}" id="kSpk">🔊 Speaker</button>
+        <button class="pkey rec ${t.rec && !t.recPaused ? 'on' : ''}" id="kRec" style="grid-column:1/-1" ${App.cfg.features.recordings && t.status === 'live' ? '' : 'disabled'}>${recLabel}</button>
         <button class="pkey end" id="kEnd" style="grid-column:1/-1">${t.status === 'ringing' ? '✖ Cancel' : '📞 End call'}</button>`;
       box.querySelector('#kEnd').onclick = hangup;
       box.querySelector('#kMute').onclick = toggleMute;
+      box.querySelector('#kRec').onclick = toggleRec;
       box.querySelector('#kSpk').onclick = async () => { const r = await VoIP.Speaker.toggle(); if (r.note) U.toast(r.note); renderKeys(); };
       return;
     }
-    box.innerHTML = `<button class="pkey go" id="kCall">📞 Call (live)</button><button class="pkey ai" id="kAi" ${App.cfg.features.ai ? '' : 'disabled title="Add a Gemini key to use the agent caller"'}>🤖 Agent caller</button>`;
+    const canRec = App.cfg.features.recordings, recOn = canRec && HR.setup.record;
+    box.innerHTML = `<button class="pkey rec ${recOn ? 'on' : ''}" id="kRec" style="grid-column:1/-1" ${canRec ? '' : 'disabled title="Recordings need the LSH_KV binding"'}>${recOn ? '⏺ Record the call: ON' : '⏺ Record the call: OFF'}</button>
+      <button class="pkey go" id="kCall">📞 Call (live)</button><button class="pkey ai" id="kAi" ${App.cfg.features.ai ? '' : 'disabled title="Add a Gemini key to use the agent caller"'}>🤖 Agent caller</button>`;
+    box.querySelector('#kRec').onclick = () => { HR.setup.record = !HR.setup.record; saveSetup(); renderKeys(); };
     box.querySelector('#kCall').onclick = ringLive;
     box.querySelector('#kAi').onclick = ringAi;
   }
@@ -232,12 +238,27 @@
       board: App.board, callId: t.callId, offerer: true, iceServers: servers, stream, gen,
       onRemote: (s) => {
         const a = remote(); a.srcObject = s; a.play().catch(() => {});
-        if (t.record) { if (!t.rec) { try { t.rec = new VoIP.Recorder([stream, s]); } catch (e) { console.warn(e); } } else t.rec.add(s); }
+        t.remoteStream = s;
+        if (t.record) { if (!t.rec) startRec(t); else t.rec.add(s); }
       },
       onState: (st) => { if (HR.t !== t) return; if (st === 'connected' && t.status === 'connecting') t.status = 'live'; renderScreen(); renderKeys(); },
       onQuality: (q) => { if (HR.t === t) { t.quality = q; renderScreen(); } }
     });
     t.rtc.start();
+  }
+
+  /* ⏺ The record key on a call: starts recording (both voices) if the call isn't recorded yet, then pauses and
+     resumes it. One file per call, uploaded when the call ends. The applicant's phone shows whether it's recording. */
+  function startRec(t) {
+    try { t.rec = new VoIP.Recorder([VoIP.Mic.stream, t.remoteStream]); t.recPaused = false; t.record = true; }
+    catch (e) { U.toast('Recording couldn\'t start: ' + e.message, 'error'); return; }
+    App.board.send({ t: 'rec', callId: t.callId, on: true });
+  }
+  function toggleRec() {
+    const t = HR.t; if (!t || t.status !== 'live') return;
+    if (!t.rec) startRec(t);
+    else { t.recPaused = !t.recPaused; t.rec[t.recPaused ? 'pause' : 'resume'](); App.board.send({ t: 'rec', callId: t.callId, on: !t.recPaused }); }
+    renderScreen(); renderKeys();
   }
 
   function hangup() {

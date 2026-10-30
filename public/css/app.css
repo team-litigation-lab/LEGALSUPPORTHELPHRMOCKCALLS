@@ -79,6 +79,10 @@ table.t tr.click { cursor: pointer; } table.t tr.click:hover td { background: va
 .tablewrap { overflow-x: auto; }
 
 /* ---------- the phone (HR's dialer and the applicant's phone) ---------- */
+/* the LSH logo at the top of the phone's case, on a white tile, as on LSH Ring Channel's switchboard */
+.phone-brand { text-align: center; margin-bottom: 14px; }
+.phone-brand img { width: 160px; max-width: 100%; height: auto; display: block; margin: 0 auto 8px; background: #fff; border-radius: 12px; padding: 10px 14px; box-sizing: border-box; }
+.phone-brand .pb-sub { font-size: 11.5px; letter-spacing: .5px; text-transform: uppercase; color: #94a3b8; font-weight: 700; }
 .phone { background: linear-gradient(180deg, #1b2a4a, #0b1730); color: #e2e8f0; border-radius: 22px; padding: 16px; box-shadow: 0 10px 30px rgba(8, 18, 38, .35); }
 .screen { background: #0b2a1f; background: linear-gradient(180deg, #123b2c, #0b261c); color: #c8f7dc; font-family: var(--mono); border-radius: 12px; padding: 14px; min-height: 130px; border: 2px solid #061a12; }
 .screen .big { font-size: 22px; font-weight: 700; color: #eafff2; word-break: break-word; }
@@ -93,6 +97,7 @@ table.t tr.click { cursor: pointer; } table.t tr.click:hover td { background: va
 .pkey { background: #22355e; border: 1px solid #2f4677; color: #fff; border-radius: 10px; padding: 9px 4px; font-size: 13px; font-weight: 700; cursor: pointer; }
 .pkey:disabled { opacity: .35; cursor: not-allowed; }
 .pkey.on { background: var(--orange); border-color: var(--orange); }
+.pkey.rec.on { background: #b91c1c; border-color: #ef4444; }
 .callkeys { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
 .pkey.go { background: var(--green); border-color: var(--green); font-size: 15px; padding: 12px; }
 .pkey.end { background: var(--red); border-color: var(--red); font-size: 15px; padding: 12px; }

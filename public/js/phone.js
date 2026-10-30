@@ -212,6 +212,8 @@
       this.started = Date.now();
       this.mr.start(1000);
     }
+    pause() { try { if (this.mr.state === 'recording') this.mr.pause(); } catch (e) {} }
+    resume() { try { if (this.mr.state === 'paused') this.mr.resume(); } catch (e) {} }
     add(stream) { try { const src = this.ctx.createMediaStreamSource(stream); src.connect(this.dest); this.sources.push(src); } catch (e) { console.warn('recorder', e); } }
     stop() {
       return new Promise((resolve) => {
