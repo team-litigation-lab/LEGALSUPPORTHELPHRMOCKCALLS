@@ -285,7 +285,7 @@ export default {
         if (!contents.length || contents[0].role !== 'user') contents.unshift({ role: 'user', parts: [{ text: '(The call is answered.)' }] });
         if (contents[contents.length - 1].role !== 'user') contents.push({ role: 'user', parts: [{ text: '(The line is quiet.)' }] });
         try {
-          const g = await generate(env, { system: callerPrompt(s, aiMinutes(env)) + '\n\nThis call is typed: reply with only what you say out loud, one or two short sentences.' + pace(Date.now() - r.created_at, aiMinutes(env)), contents: contents.slice(-60), maxTokens: 200, temperature: 0.8 });
+          const g = await generate(env, { system: callerPrompt(s, aiMinutes(env)) + '\n\nThis call is typed: reply with only what you say out loud, one or two short sentences.' + pace(Date.now() - (r.answered_at || r.created_at), aiMinutes(env)), contents: contents.slice(-60), maxTokens: 200, temperature: 0.8 });
           const text = g.text.replace(/^\s*(caller|[A-Z][a-z]+ [A-Z][a-z]+)\s*:\s*/i, '').trim();
           if (text) await sb.appendTyped(r.id, me, [{ who: 'caller', text }]);
           return json({ text });

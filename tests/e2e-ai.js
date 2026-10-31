@@ -1,7 +1,8 @@
 /* 🤖 The agent caller, against `wrangler dev` with tests/mock-gemini.js standing in for Google.
-   HR types a persona and sends the agent caller; the applicant's phone rings; they answer; the AI
-   talks (the mock); HR follows the transcript; the applicant holds, transfers to an extension the
-   scenario lists as out, hangs up and submits the note; the call log has the transcript and recording. */
+   HR types a persona and sends the agent caller; the applicant's phone rings (the line opens while it rings)
+   and they answer before it's ready; the AI talks (the mock); HR follows the transcript; a goodbye on hold
+   doesn't hang up, a goodbye on the line does; the applicant submits the note; the call log has the
+   transcript and recording. */
 const { chromium } = require('playwright');
 const BASE = process.env.BASE || 'http://127.0.0.1:8799';
 const PASS = process.env.PASS || 'test-pass';
@@ -47,7 +48,7 @@ async function main() {
   // While it rings, the phone opens the line to the caller, so there's no wait once it's answered.
   for (let i = 0; i < 50 && !(await (await fetch('http://127.0.0.1:9911/log')).json()).some((x) => x.token); i++) await ap.waitForTimeout(100);
   if (!(await (await fetch('http://127.0.0.1:9911/log')).json()).some((x) => x.token)) throw new Error('the line was not warmed up while ringing');
-  step('the line to the caller opened while the phone rang');
+  step('the line to the caller started opening while the phone rang (answered before it was ready)');
 
   await ap.click('#kAns');
   await ap.waitForFunction(() => /On the call/.test(document.querySelector('#screen').textContent), null, { timeout: 20000 });
@@ -61,18 +62,21 @@ async function main() {
   await hr.waitForFunction(() => /Hi, this is Maria/.test(document.querySelector('#aiList').textContent), null, { timeout: 20000 });
   step('HR follows the transcript live');
 
-  await ap.click('#kHold'); await ap.waitForTimeout(300); await ap.click('#kHold');
-  await ap.click('#kTx');
-  await ap.click('#transferBox [data-ext="301"]');
-  await ap.waitForFunction(() => /no answer|Take the caller back/.test(document.querySelector('#transferBox').textContent) || /On the call/.test(document.querySelector('#screen').textContent), null, { timeout: 10000 });
+  // A goodbye while the caller is on hold isn't a hang-up (they never heard the applicant close).
+  await ap.click('#kHold');
+  await ap.evaluate(() => AiCall.say('Is there anything else?'));
+  await ap.waitForTimeout(4000);
+  if (!(await ap.evaluate(() => AiCall.active()))) throw new Error('a goodbye on hold hung the call up');
+  await ap.click('#kHold');
+  step('hold and resume; a goodbye on hold does not hang up');
   await ap.fill('#n_caller', 'Maria Lopez');
   await ap.fill('#n_reason', 'Next appointment date.');
   await hr.waitForFunction(() => /Next appointment date/.test(document.querySelector('#aiList').textContent), null, { timeout: 10000 });
   await hr.screenshot({ path: shots + '/04-hr-agent-follow.png' });
-  step('hold, transfer, and HR sees the note');
+  step('HR sees the note');
 
   // The applicant asks if there's anything else; the caller says goodbye and the line hangs up by itself.
-  await ap.evaluate(() => AiCall.say('Is there anything else I can help you with?'));
+  await ap.evaluate(() => AiCall.say('Is there anything else I can help you with today?'));
   await ap.waitForFunction(() => !AiCall.active(), null, { timeout: 15000 });
   await ap.waitForSelector('#noteForm button[type=submit]');
   await ap.click('#noteForm button[type=submit]');
@@ -84,7 +88,7 @@ async function main() {
   await hr.locator('#callList tr', { hasText: 'Alex Rivera' }).first().click();
   await hr.waitForSelector('#loadRec', { timeout: 10000 });
   const page = await hr.textContent('main');
-  for (const want of ['Hi, this is Maria', 'Next appointment date.', 'ZEBRA-MARKER', 'Goodbye.', '(goodbye)']) if (!page.includes(want)) throw new Error('call page is missing: ' + want);
+  for (const want of ['Hi, this is Maria', 'Next appointment date.', 'ZEBRA-MARKER', 'Goodbye.', '(goodbye)']) if (!page.includes(want)) throw new Error('call page is missing: ' + want + '\n' + (page.match(/Ended by[^·]{0,80}/) || [''])[0] + ' | ' + page.slice(0, 1500));
   await hr.screenshot({ path: shots + '/05-hr-agent-call.png', fullPage: true });
   step('call log has the transcript, the note, the persona and the recording');
 

@@ -22,7 +22,7 @@
     process(inputs) {
       const ch = inputs[0] && inputs[0][0];
       if (ch) for (let i = 0; i < ch.length; i++) {
-        const s = Math.max(-1, Math.min(1, ch[i] * 1.6));   // a little more receptive: softer voices still reach the caller
+        const s = Math.tanh(ch[i] * 1.6) / 0.9217;   // a little more receptive: soft voices lifted, loud ones rounded off, never clipped
         this.buf[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff;
         if (this.n === this.size) { this.port.postMessage(this.buf.buffer.slice(0)); this.n = 0; }
       }
@@ -38,7 +38,7 @@
   function voiceSupported() { return !!(Ctx && window.WebSocket && window.AudioWorkletNode && navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
 
   async function start(opts) {
-    stop(true);
+    stop(true, true);
     const call = C = { opts, mode: 'voice', ws: null, ctx: null, mic: null, node: null, src: null, muted: false, held: false, ended: false, playing: [], playAt: 0,
       line: null, seq: 0, heard: false, transcript: [], rec: null, recDest: null };
     opts.onState && opts.onState('connecting');
@@ -119,7 +119,7 @@
     if (!voiceSupported() || document.visibilityState === 'hidden') return;
     const w = warm = { callId, at: Date.now() };
     w.link = connect(callId, []).catch(() => null).then((link) => {
-      if (warm !== w && link && link.ws) { closeLink(link); return null; }
+      if (warm !== w && !w.taken && link && link.ws) { closeLink(link); return null; }   // unprepared before it was ready
       return link;
     });
   }
@@ -127,6 +127,7 @@
   async function takeWarm(callId) {
     const w = warm; warm = null;
     if (!w || w.callId !== callId) { if (w) w.link.then((l) => { if (l && l.ws) closeLink(l); }); return null; }
+    w.taken = true;   // answered before it was ready: wait for it rather than open another
     const link = await w.link;
     if (link && link.ws && (link.closed || link.ws.readyState !== 1)) return null;
     return link;
@@ -141,6 +142,7 @@
     const rate = call.ctx.sampleRate;
     call.node.port.onmessage = (e) => {
       if (C !== call || call.muted || call.held || !call.ws || call.ws.readyState !== 1) return;
+      if (!call.voiced) { const a = new Int16Array(e.data); let sum = 0; for (let i = 0; i < a.length; i += 4) sum += a[i] * a[i]; if (Math.sqrt(sum / (a.length / 4)) > 700) call.voiced = true; }
       call.ws.send(JSON.stringify({ realtimeInput: { audio: { data: b64(e.data), mimeType: 'audio/pcm;rate=' + rate } } }));
     };
     call.src.connect(call.node);
@@ -155,7 +157,7 @@
     } catch (e) { call.rec = null; }
     call.opts.onState && call.opts.onState('live');
     timeLimit(call);
-    call.kick = setTimeout(() => { if (C === call && !call.heard) say('(The person who answered hasn\'t said anything yet.)', true); }, 3000);
+    call.kick = setTimeout(() => { if (C === call && !call.heard && !call.voiced) say('(The person who answered hasn\'t said anything yet.)', true); }, 3000);
   }
 
   function timeLimit(call) {
@@ -190,20 +192,20 @@
   /* ---------- the caller says goodbye: the line hangs up ---------- */
   // The end of the caller's last line, e.g. "Okay, thank you. Bye!", "Goodbye, Sarah." or "Have a good day."
   const BYE = /(?:good[\s-]?bye|\bbye(?:[\s-]?bye)?(?:\s+now)?|take care(?:\s+now)?|have a (?:good|nice|great|wonderful|lovely|blessed) (?:day|one|night|evening|afternoon|weekend))[\s.!,]*(?:[a-z']+[\s.!]*)?$/i;
+  // The caller's last turn (transcription that came in late is joined on). What the applicant says after it,
+  // like their own "Bye!", doesn't cancel it; the caller carrying on talking does.
   function saidBye(call) {
-    for (let i = call.transcript.length - 1; i >= 0; i--) {
-      const x = call.transcript[i];
-      if (x.who === 'caller') return BYE.test(x.text.slice(-60));
-      if (x.text) return false;   // the applicant spoke after the caller's last line
-    }
-    return false;
+    const t = call.transcript; let i = t.length - 1, text = '';
+    while (i >= 0 && t[i].who !== 'caller') i--;
+    while (i >= 0 && t[i].who === 'caller') text = t[i--].text + ' ' + text;
+    return BYE.test(text.trim().slice(-60));
   }
   // Once the caller's goodbye has finished playing (and a breath after), it hangs up, as a real caller would.
   function byeCheck(call) {
-    if (C !== call || call.ended || call.byeTimer || !call.heard || !saidBye(call)) return;
+    if (C !== call || call.ended || call.held || call.byeTimer || !call.heard || !saidBye(call)) return;
     const wait = () => {
       if (C !== call || call.ended) return;
-      if (call.talking || !saidBye(call)) { call.byeTimer = null; return; }   // it carried on talking
+      if (call.talking || call.held || !saidBye(call)) { call.byeTimer = null; return; }   // it carried on talking, or is on hold
       const left = call.mode === 'voice' && call.ctx ? (call.playAt - call.ctx.currentTime) * 1000 : (window.speechSynthesis && speechSynthesis.speaking ? 300 : 0);
       if (left > 50) { call.byeTimer = setTimeout(wait, Math.min(left + 20, 1000)); return; }
       if (!call.byeSince) { call.byeSince = Date.now(); call.byeTimer = setTimeout(wait, 1200); return; }
@@ -248,6 +250,7 @@
 
   /* ---------- text mode ---------- */
   async function startText(call, why) {
+    unprepare();   // the line warmed while it rang isn't needed
     call.mode = 'text';
     if (call.ctx) { if (window.VoIP && VoIP.Speaker) VoIP.Speaker.unregister(call.ctx); try { call.ctx.close(); } catch (e) {} call.ctx = null; }
     if (why) call.opts.onNotice && call.opts.onNotice(why);
@@ -318,7 +321,8 @@
     try { if (window.speechSynthesis) speechSynthesis.cancel(); } catch (e) {}
   }
   // Ends the call; resolves with the transcript and the recording (if any).
-  function stop(silent) {
+  function stop(silent, keepWarm) {
+    if (!keepWarm) unprepare();
     const call = C; if (!call) return Promise.resolve(null);
     C = null;
     finish(call);

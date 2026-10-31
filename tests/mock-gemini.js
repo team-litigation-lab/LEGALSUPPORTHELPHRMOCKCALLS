@@ -33,7 +33,7 @@ wss.on('connection', (ws) => {
   };
   ws.on('message', (raw) => {
     const m = JSON.parse(raw.toString());
-    if (m.setup) { ws.send(JSON.stringify({ setupComplete: {} })); return; }
+    if (m.setup) { setTimeout(() => ws.send(JSON.stringify({ setupComplete: {} })), 1500); return; }   // slow, so answering can beat it
     if (m.realtimeInput && m.realtimeInput.audio) {
       audioIn++;
       if (audioIn === 15) { ws.send(JSON.stringify({ serverContent: { inputTranscription: { text: 'Thank you for calling Legal Support Help, this is Jamie.' } } })); speak('Hi, this is Maria. When is my next appointment?'); }
