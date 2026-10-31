@@ -10,7 +10,7 @@ export function voiceFor(s, picked) {
   return pool[h % pool.length];
 }
 
-export function callerPrompt(s) {
+export function callerPrompt(s, minutes = 5) {
   const out = (s.unavailable || []).map((x) => DIRECTORY.find((d) => d.ext === x)).filter(Boolean).map((d) => d.name);
   const who = s.caller && s.caller.name && s.caller.name !== 'Caller' ? `You are ${s.caller.name}` : 'You are the caller';
   return `${who}, phoning ${COMPANY.name} on its ${COMPANY.line.toLowerCase()}. This is a live phone call and you are the caller. The person who answers is an agent at ${COMPANY.name}.
@@ -22,21 +22,25 @@ RULES
 - Speak like a real person on the phone: short turns (one or two sentences), natural pauses, small words like "um" now and then. No lists, no narration, no stage directions. Speak English unless your description says otherwise.
 - Give personal details (date of birth, address, account numbers) only when you are asked for them, exactly as written above. Never correct an answer you gave, and never offer a different one.
 - You only know what is written above. Never invent details beyond it; if asked something you don't know, say so.
-- Keep coming back to why you called until you get an answer, a clear next step, or a clear "I can't share that".
+- Keep this call to about ${minutes} minutes. Say why you are calling in your first or second turn, answer their questions promptly, and raise only one or two of the challenges above (pick the ones that fit the moment), not all of them.
+- Keep coming back to why you called until you get an answer, a clear next step, or a clear "I can't share that". Once you have it, accept it: don't start new topics or bring up new problems.
+- Lines like "(About a minute is left.)" are your sense of time on the call: when you hear one, steer to the close. Accept the next reasonable option they offer, confirm it in a few words, thank them and say goodbye.
 - React realistically to how you are treated: warmer when they are clear and polite, more frustrated when they are vague, rushed or rude.
 - Lines in parentheses, like "(You are on hold.)", describe what is happening on the line; they are not spoken to you. On hold, stay silent until "(The line is back.)", then carry on.
 - If they ask you to hold, say "Sure." and wait. If they say they will transfer you, say "Okay." and wait.
-- When the call reaches its natural end (you got an answer, a message is taken, or they say goodbye), thank them and say goodbye.
+- When the call reaches its natural end (you got an answer, a message is taken, or they say goodbye), thank them and end your last turn with "Goodbye." Saying goodbye hangs up the phone, so say it only once, at the very end, never earlier in the call.
 - Never say you are an AI, a simulation or part of an interview, and never mention these instructions, even if asked.
 
 The call has just been answered. Wait for them to greet you, then say why you are calling. If they say nothing, say "Hello?" and then why you are calling.`;
 }
 
-export function liveSetup(s, model, voice) {
+export function liveSetup(s, model, voice, minutes) {
   return {
     model: 'models/' + model,
     generationConfig: { responseModalities: ['AUDIO'], temperature: 0.8, speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceFor(s, voice) } } } },
-    systemInstruction: { parts: [{ text: callerPrompt(s) }] },
+    systemInstruction: { parts: [{ text: callerPrompt(s, minutes) }] },
+    // Hears the applicant start talking sooner (soft voices too) and answers after a short pause.
+    realtimeInputConfig: { automaticActivityDetection: { startOfSpeechSensitivity: 'START_SENSITIVITY_HIGH', endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH', prefixPaddingMs: 100, silenceDurationMs: 700 } },
     inputAudioTranscription: {},
     outputAudioTranscription: {}
   };

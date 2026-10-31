@@ -9,8 +9,9 @@
    Text: the same caller, typed, when there's no microphone or live voice
    isn't available (the caller's lines can be read aloud).
 
+   AiCall.prepare(callId) while it rings · unprepare() if it isn't answered
    AiCall.start({ callId, onState, onLine, onError, onNotice })  → 'voice' | 'text'
-     onState: connecting · live · ended      onLine(who, text, id)   who: applicant | caller
+     onState(state, reason): connecting · live · ended (reason: goodbye · time-limit)      onLine(who, text, id)   who: applicant | caller
    AiCall.hold(on) · mute(on) · transfer(name, available) · say(text) · stop() → { transcript, recording }
    ========================================================= */
 (function () {
@@ -21,7 +22,7 @@
     process(inputs) {
       const ch = inputs[0] && inputs[0][0];
       if (ch) for (let i = 0; i < ch.length; i++) {
-        const s = Math.max(-1, Math.min(1, ch[i]));
+        const s = Math.max(-1, Math.min(1, ch[i] * 1.6));   // a little more receptive: softer voices still reach the caller
         this.buf[this.n++] = s < 0 ? s * 0x8000 : s * 0x7fff;
         if (this.n === this.size) { this.port.postMessage(this.buf.buffer.slice(0)); this.n = 0; }
       }
@@ -49,46 +50,86 @@
       call.mic = await VoIP.Mic.open();
     } catch (e) { return startText(call, e.message + ' This call is typed instead.'); }
     if (C !== call) return 'ended';
-    const skip = [];
-    for (let tries = 0; tries < 6 && C === call; tries++) {
-      let t;
-      try { t = await API.post('/api/ai/live', { callId: opts.callId, skip }); }
+    // The line the phone warmed up while it rang, if it's ready; otherwise connect now.
+    let link = await takeWarm(opts.callId);
+    if (C !== call) { if (link && link.ws) closeLink(link); return 'ended'; }
+    const skip = link && link.pair ? [link.pair] : [];
+    for (let tries = 0; !(link && link.ws) && tries < 6 && C === call; tries++) {
+      try { link = await connect(opts.callId, skip); }
       catch (e) { return startText(call, (e.message || 'Live voice isn\'t available') + ' This call is typed instead.'); }
-      if (C !== call) return 'ended';
-      call.maxSeconds = t.maxSeconds;
-      const ok = await openSocket(call, t);
-      if (ok === true) return 'voice';
-      if (C !== call || call.ended) return 'ended';
-      skip.push(t.pair);
+      if (C !== call) { if (link.ws) closeLink(link); return 'ended'; }
+      if (!link.ws) skip.push(link.pair);
     }
-    return startText(call, 'The voice service didn\'t accept the call, so this call is typed.');
+    if (!(link && link.ws)) return startText(call, 'The voice service didn\'t accept the call, so this call is typed.');
+    call.maxSeconds = link.maxSeconds;
+    bind(call, link);
+    await onReady(call);
+    if (C !== call) return 'ended';
+    link.early.forEach((m) => handle(call, m));
+    return 'voice';
   }
 
-  function openSocket(call, t) {
+  /* ---------- the line to Gemini Live ---------- */
+  // Fetches a token and opens the socket up to "setup complete". Resolves { ws, ... } when ready, or { ws: null, pair } when that
+  // key or model didn't take it (try the next); throws when no token can be had (the call runs typed).
+  async function connect(callId, skip) {
+    const t = await API.post('/api/ai/live', { callId, skip });
     return new Promise((resolve) => {
-      let ready = false;
+      const link = { ws: null, pair: t.pair, maxSeconds: t.maxSeconds, early: [], callId };
       const ws = new WebSocket(t.url + (t.url.includes('?') ? '&' : '?') + 'access_token=' + encodeURIComponent(t.token));
-      call.ws = ws;
+      let ready = false;
       ws.onopen = () => ws.send(JSON.stringify({ setup: { model: 'models/' + t.model } }));
       ws.onmessage = async (ev) => {
         let msg;
         try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : await ev.data.text()); } catch (e) { return; }
-        if (C !== call) return;
-        if (msg.setupComplete && !ready) { ready = true; await onReady(call); resolve(true); return; }
-        handle(call, msg);
+        if (msg.setupComplete && !ready) { ready = true; link.ws = ws; return resolve(link); }
+        if (ready) link.early.push(msg);   // anything before the call takes the line over
       };
       ws.onerror = () => {};
-      ws.onclose = (ev) => {
-        if (C !== call) return;
-        if (!ready) { call.ws = null; return resolve(ev.reason || `code ${ev.code}`); }
-        if (!call.ended) {
-          const why = ev.code === 1000 ? '' : ev.reason || '';
-          finish(call);
-          if (ev.code !== 1000) call.opts.onError && call.opts.onError('The call dropped' + (why ? ` (${why})` : '') + '.');
-          call.opts.onState && call.opts.onState('ended');
-        }
-      };
+      ws.onclose = () => { if (!ready) resolve(link); else link.closed = true; };
     });
+  }
+  function closeLink(link) { try { if (link.ws && link.ws.readyState <= 1) link.ws.close(1000); } catch (e) {} }
+
+  // The call takes the line over: its messages and its closing are now the call's.
+  function bind(call, link) {
+    const ws = call.ws = link.ws;
+    ws.onmessage = async (ev) => {
+      let msg;
+      try { msg = JSON.parse(typeof ev.data === 'string' ? ev.data : await ev.data.text()); } catch (e) { return; }
+      if (C === call) handle(call, msg);
+    };
+    const dropped = (code, reason) => {
+      if (C !== call || call.ended) return;
+      const why = code === 1000 ? '' : reason || '';
+      finish(call);
+      if (code !== 1000) call.opts.onError && call.opts.onError('The call dropped' + (why ? ` (${why})` : '') + '.');
+      call.opts.onState && call.opts.onState('ended');
+    };
+    ws.onclose = (ev) => dropped(ev.code, ev.reason);
+    if (link.closed || ws.readyState > 1) setTimeout(() => dropped(1006, 'the line closed'), 0);
+  }
+
+  /* While the phone rings, the line to the caller is opened, so the caller is there the moment it's answered.
+     Nothing goes up it until then (no microphone), so the caller stays quiet. */
+  let warm = null;
+  function prepare(callId) {
+    if (warm && warm.callId === callId) return;
+    unprepare();
+    if (!voiceSupported() || document.visibilityState === 'hidden') return;
+    const w = warm = { callId, at: Date.now() };
+    w.link = connect(callId, []).catch(() => null).then((link) => {
+      if (warm !== w && link && link.ws) { closeLink(link); return null; }
+      return link;
+    });
+  }
+  function unprepare() { const w = warm; warm = null; if (w) w.link.then((l) => { if (l && l.ws) closeLink(l); }); }
+  async function takeWarm(callId) {
+    const w = warm; warm = null;
+    if (!w || w.callId !== callId) { if (w) w.link.then((l) => { if (l && l.ws) closeLink(l); }); return null; }
+    const link = await w.link;
+    if (link && link.ws && (link.closed || link.ws.readyState !== 1)) return null;
+    return link;
   }
 
   async function onReady(call) {
@@ -114,25 +155,64 @@
     } catch (e) { call.rec = null; }
     call.opts.onState && call.opts.onState('live');
     timeLimit(call);
-    call.kick = setTimeout(() => { if (C === call && !call.heard) say('(The person who answered hasn\'t said anything yet.)', true); }, 4500);
+    call.kick = setTimeout(() => { if (C === call && !call.heard) say('(The person who answered hasn\'t said anything yet.)', true); }, 3000);
   }
 
   function timeLimit(call) {
     if (!call.maxSeconds) return;
     const ms = call.maxSeconds * 1000, lead = Math.min(30000, ms / 2);
+    // The caller's sense of time: two quiet cues steer it to close well before the limit.
+    call.cues = [[ms - 150000, '(About two minutes are left on this call: no new problems; move to the next step.)'],
+      [ms - 75000, '(About a minute is left. At your next turn, accept what they offer, confirm it, thank them and say goodbye.)']]
+      .filter(([at]) => at > 20000).map(([at, text]) => setTimeout(() => cue(call, text), at));
     call.warn = setTimeout(() => { if (C === call) call.opts.onNotice && call.opts.onNotice(`⏱ ${Math.round(lead / 1000)} seconds left on this call. Wrap it up.`); }, ms - lead);
-    call.limit = setTimeout(() => { if (C === call) { call.opts.onNotice && call.opts.onNotice(`The call reached its ${Math.round(call.maxSeconds / 60)}-minute limit.`); call.endedBy = 'caller'; call.opts.onState && call.opts.onState('ended'); } }, ms);
+    call.limit = setTimeout(() => { if (C === call) { call.opts.onNotice && call.opts.onNotice(`The call reached its ${Math.round(call.maxSeconds / 60)}-minute limit.`); call.endedBy = 'caller'; call.opts.onState && call.opts.onState('ended', 'time-limit'); } }, ms);
+  }
+
+  // A cue said while the caller is on hold would make it speak; it waits for the line to come back.
+  function cue(call, text) {
+    if (C !== call || call.ended) return;
+    if (call.held) { call.pendingCue = text; return; }
+    say(text, true);
   }
 
   function handle(call, msg) {
     const sc = msg.serverContent;
     if (!sc) return;
-    if (sc.interrupted) flush(call);
+    if (sc.interrupted) { flush(call); call.talking = false; }
     const parts = (sc.modelTurn && sc.modelTurn.parts) || [];
-    parts.forEach((p) => { if (p.inlineData && p.inlineData.data && /audio/.test(p.inlineData.mimeType || 'audio')) play(call, p.inlineData.data, p.inlineData.mimeType); });
+    parts.forEach((p) => { if (p.inlineData && p.inlineData.data && /audio/.test(p.inlineData.mimeType || 'audio')) { call.talking = true; play(call, p.inlineData.data, p.inlineData.mimeType); } });
     if (sc.inputTranscription && sc.inputTranscription.text) { call.heard = true; addText(call, 'applicant', sc.inputTranscription.text); }
-    if (sc.outputTranscription && sc.outputTranscription.text) addText(call, 'caller', sc.outputTranscription.text);
-    if (sc.turnComplete) call.line = null;
+    if (sc.outputTranscription && sc.outputTranscription.text) { addText(call, 'caller', sc.outputTranscription.text); if (!call.talking) byeCheck(call); }
+    if (sc.turnComplete) { call.line = null; call.talking = false; byeCheck(call); }
+  }
+
+  /* ---------- the caller says goodbye: the line hangs up ---------- */
+  // The end of the caller's last line, e.g. "Okay, thank you. Bye!", "Goodbye, Sarah." or "Have a good day."
+  const BYE = /(?:good[\s-]?bye|\bbye(?:[\s-]?bye)?(?:\s+now)?|take care(?:\s+now)?|have a (?:good|nice|great|wonderful|lovely|blessed) (?:day|one|night|evening|afternoon|weekend))[\s.!,]*(?:[a-z']+[\s.!]*)?$/i;
+  function saidBye(call) {
+    for (let i = call.transcript.length - 1; i >= 0; i--) {
+      const x = call.transcript[i];
+      if (x.who === 'caller') return BYE.test(x.text.slice(-60));
+      if (x.text) return false;   // the applicant spoke after the caller's last line
+    }
+    return false;
+  }
+  // Once the caller's goodbye has finished playing (and a breath after), it hangs up, as a real caller would.
+  function byeCheck(call) {
+    if (C !== call || call.ended || call.byeTimer || !call.heard || !saidBye(call)) return;
+    const wait = () => {
+      if (C !== call || call.ended) return;
+      if (call.talking || !saidBye(call)) { call.byeTimer = null; return; }   // it carried on talking
+      const left = call.mode === 'voice' && call.ctx ? (call.playAt - call.ctx.currentTime) * 1000 : (window.speechSynthesis && speechSynthesis.speaking ? 300 : 0);
+      if (left > 50) { call.byeTimer = setTimeout(wait, Math.min(left + 20, 1000)); return; }
+      if (!call.byeSince) { call.byeSince = Date.now(); call.byeTimer = setTimeout(wait, 1200); return; }
+      call.byeTimer = null;
+      call.opts.onNotice && call.opts.onNotice('📞 The caller said goodbye and hung up.');
+      call.endedBy = 'caller'; call.opts.onState && call.opts.onState('ended', 'goodbye');
+    };
+    call.byeSince = 0;
+    call.byeTimer = setTimeout(wait, 300);
   }
 
   function addText(call, who, text) {
@@ -181,7 +261,7 @@
     try {
       const r = await API.post('/api/ai/text', { callId: call.opts.callId, text: text || '' });
       if (C !== call || call.ended) return;
-      if (r.text) { call.line = null; addText(call, 'caller', r.text); call.line = null; speak(call, r.text); }
+      if (r.text) { call.line = null; addText(call, 'caller', r.text); call.line = null; speak(call, r.text); byeCheck(call); }
     } catch (e) { call.opts.onError && call.opts.onError(e.message); }
     finally { call.busy = false; call.opts.onBusy && call.opts.onBusy(false); }
   }
@@ -210,6 +290,7 @@
     call.held = !!on;
     if (on) flush(call);
     if (call.mode === 'voice') say(on ? '(You are on hold.)' : '(The line is back.)', true);
+    if (!on && call.pendingCue) { const t = call.pendingCue; call.pendingCue = null; say(t, true); }
     return call.held;
   }
   // The transfer rings the extension for a few seconds: someone picks up (the call is handed over and ends) or nobody does.
@@ -222,13 +303,14 @@
       if (available) return resolve('connected');
       call.held = false;
       if (call.mode === 'voice') say(`(The transfer to ${name} didn't go through: nobody picked up. The person who answered is back on the line.)`, true);
+      if (call.pendingCue) { const t = call.pendingCue; call.pendingCue = null; say(t, true); }
       resolve('no-answer');
     }, 5500));
   }
 
   function finish(call) {
     call.ended = true;
-    clearTimeout(call.kick); clearTimeout(call.warn); clearTimeout(call.limit);
+    clearTimeout(call.kick); clearTimeout(call.warn); clearTimeout(call.limit); clearTimeout(call.byeTimer); (call.cues || []).forEach(clearTimeout);
     try { if (call.ws && call.ws.readyState <= 1) call.ws.close(1000); } catch (e) {}
     flush(call);
     try { if (call.src) call.src.disconnect(); } catch (e) {}
@@ -251,5 +333,5 @@
   }
 
   window.addEventListener('pagehide', () => { if (C) stop(true); });
-  window.AiCall = { start, stop, say, mute, hold, transfer, voiceSupported, active: () => !!C, mode: () => (C ? C.mode : null), busy: () => !!(C && C.busy) };
+  window.AiCall = { start, prepare, unprepare, stop, say, mute, hold, transfer, voiceSupported, active: () => !!C, mode: () => (C ? C.mode : null), busy: () => !!(C && C.busy) };
 })();

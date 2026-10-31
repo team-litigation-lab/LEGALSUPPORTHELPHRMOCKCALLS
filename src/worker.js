@@ -18,7 +18,7 @@
  *   GEMINI_API_KEY20, GEMINI_API_KEY21
  *                        optional: this site's own Gemini keys, used in turn, for the 🤖 agent caller (without a key, live calls only).
  *                        GEMINI_API_KEY5 … GEMINI_API_KEY9 (and GEMINI_API_KEY, _KEY1, _KEY2), the shared LSH pool, are fallbacks.
- * Variables: RECORDING_DAYS (default 90), AI_MAX_MINUTES (default 8). How long a link and a session last is
+ * Variables: RECORDING_DAYS (default 90), AI_MAX_MINUTES (default 5). How long a link and a session last is
  * set on 🛡 Admin → Settings (kept in the Switchboard).
  * Recordings are kept in the LSH_KV namespace under "hrmc:rec:" and expire on their own.
  */
@@ -36,7 +36,9 @@ const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, 
 const board = (env) => env.SWITCHBOARD.get(env.SWITCHBOARD.idFromName('main'));
 const REC = 'hrmc:rec:';
 const recDays = (env) => Math.min(365, Math.max(1, Number(env.RECORDING_DAYS) || 90));
-const aiMinutes = (env) => Math.min(15, Math.max(2, Number(env.AI_MAX_MINUTES) || 8));
+const aiMinutes = (env) => Math.min(15, Math.max(2, Number(env.AI_MAX_MINUTES) || 5));
+// A typed call has no clock of its own: tell the caller how far in it is, as a voice call is told by its cues.
+const pace = (ms, minutes) => { const left = minutes * 60000 - ms; return left < 75000 ? '\n\n(About a minute is left. Wrap up now: accept what they offer, thank them and say goodbye.)' : left < 150000 ? '\n\n(About two minutes are left: no new problems; move to the next step.)' : ''; };
 
 /* Who a token belongs to, checked against the Switchboard every time: an HR account that was disabled or
    deleted, or an applicant whose session ended (a new link, a closed link, its time up), is signed out.
@@ -264,7 +266,7 @@ export default {
           // A call gets a few tries (busy keys, models); every token is one Gemini Live session.
           if ((await sb.countUsage(me.id, 'live:' + r.id, 3600000)) >= 8 || (await sb.countUsage(me.id, 'live', 3600000)) >= 60) return json({ error: 'Too many voice connections; this call runs as text.', code: 'RATE_LIMIT' }, 429);
           await sb.logUsage(me.id, 'live:' + r.id); await sb.logUsage(me.id, 'live');
-          const t = await liveToken(env, (model) => liveSetup(s, model, r.data.voice), aiMinutes(env), Array.isArray(body.skip) ? body.skip.map(String) : []);
+          const t = await liveToken(env, (model) => liveSetup(s, model, r.data.voice, aiMinutes(env)), aiMinutes(env), Array.isArray(body.skip) ? body.skip.map(String) : []);
           return t.ok ? json({ token: t.token, model: t.model, url: t.url, pair: t.pair, maxSeconds: aiMinutes(env) * 60 }) : json({ error: t.error, code: t.code }, t.code === 'BUSY' ? 429 : 502);
         }
         // Text mode: the same caller, one turn at a time (no microphone, or live voice unavailable).
@@ -283,7 +285,7 @@ export default {
         if (!contents.length || contents[0].role !== 'user') contents.unshift({ role: 'user', parts: [{ text: '(The call is answered.)' }] });
         if (contents[contents.length - 1].role !== 'user') contents.push({ role: 'user', parts: [{ text: '(The line is quiet.)' }] });
         try {
-          const g = await generate(env, { system: callerPrompt(s) + '\n\nThis call is typed: reply with only what you say out loud, one or two short sentences.', contents: contents.slice(-60), maxTokens: 200, temperature: 0.8 });
+          const g = await generate(env, { system: callerPrompt(s, aiMinutes(env)) + '\n\nThis call is typed: reply with only what you say out loud, one or two short sentences.' + pace(Date.now() - r.created_at, aiMinutes(env)), contents: contents.slice(-60), maxTokens: 200, temperature: 0.8 });
           const text = g.text.replace(/^\s*(caller|[A-Z][a-z]+ [A-Z][a-z]+)\s*:\s*/i, '').trim();
           if (text) await sb.appendTyped(r.id, me, [{ who: 'caller', text }]);
           return json({ text });

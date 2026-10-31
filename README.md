@@ -129,7 +129,7 @@ npx wrangler deploy
 | `GEMINI_API_KEY5` … `GEMINI_API_KEY9` (then `GEMINI_API_KEY`, `_KEY1`, `_KEY2`) (secrets) | Optional fallbacks: the shared LSH Gemini key pool (as on Ring Channel), used when `GEMINI_API_KEY20` and `_21` are busy or missing. |
 | `LSH_KV` (KV binding) | The recordings, under `hrmc:rec:`. `wrangler.json` points at the shared LSH KV namespace (the same one as Ring Channel, a separate key prefix); give it its own namespace if you want the interview recordings kept apart. |
 | `RECORDING_DAYS` | How long recordings are kept (default 90). |
-| `AI_MAX_MINUTES` | The longest an agent call can run (default 8). |
+| `AI_MAX_MINUTES` | How long an agent call runs (default 5). The caller is paced to wrap up inside it, and the call hangs up when the caller says goodbye. |
 
 ## Local development and tests
 

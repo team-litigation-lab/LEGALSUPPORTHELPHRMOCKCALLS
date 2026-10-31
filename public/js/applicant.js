@@ -165,7 +165,8 @@
     const p = Applicant.p = { mode: 'ai', callId: m.callId, status: 'ringing', callerId: m.callerId, lineLabel: m.lineLabel, lineNumber: m.lineNumber, gender: m.gender,
       unavailable: m.unavailable || [], rec: App.cfg.features.recordings, note: {}, muted: false, held: false, lines: [], metrics: { holds: [], transfers: [] } };
     Sounds.ring();
-    p.ringTimer = setTimeout(() => { if (Applicant.p === p && p.status === 'ringing') { stopAlerts(); App.board.send({ t: 'ai-decline', callId: p.callId, reason: 'no-answer' }); Applicant.p = null; renderAll(); } }, RING_OUT);
+    AiCall.prepare(p.callId);   // the caller is on the line the moment it's answered
+    p.ringTimer = setTimeout(() => { if (Applicant.p === p && p.status === 'ringing') { stopAlerts(); AiCall.unprepare(); App.board.send({ t: 'ai-decline', callId: p.callId, reason: 'no-answer' }); Applicant.p = null; renderAll(); } }, RING_OUT);
     if (App.route.name !== 'phone') App.nav('#/phone'); else renderAll();
   }
 
@@ -233,6 +234,7 @@
   function decline() {
     const p = Applicant.p; if (!p || p.status !== 'ringing') return;
     stopAlerts(); clearTimeout(p.ringTimer);
+    if (p.mode === 'ai') AiCall.unprepare();
     App.board.send(p.mode === 'ai' ? { t: 'ai-decline', callId: p.callId, reason: 'declined' } : { t: 'decline', callId: p.callId });
     Applicant.p = null; renderAll();
   }
@@ -314,10 +316,10 @@
     p.answeredAt = Date.now();
     const mode = await AiCall.start({
       callId: p.callId, forceText: !!p.typed, readAloud: true, gender: p.gender,
-      onState: (st) => {
+      onState: (st, why) => {
         if (Applicant.p !== p) return;
         if (st === 'live' && p.status === 'connecting') { p.status = 'live'; p.typed = AiCall.mode() === 'text'; renderAll(); }
-        if (st === 'ended' && p.status !== 'ended') endAi('caller', 'hangup');
+        if (st === 'ended' && p.status !== 'ended') endAi('caller', why || 'hangup');
       },
       onLine: (who, text, id) => {
         if (Applicant.p !== p) return;
@@ -371,8 +373,8 @@
       case 'error': U.toast(m.msg, 'error'); return;
       case 'incoming': return incoming(m);
       case 'ai-incoming': return aiIncoming(m);
-      case 'ai-stop': if (mine && p.mode === 'ai') { U.toast('HR ended the call.'); endAi('caller', 'stopped'); } return;
-      case 'taken': if (mine && p.status === 'ringing') { stopAlerts(); clearTimeout(p.ringTimer); Applicant.p = null; U.toast('Answered on another tab.'); renderAll(); } return;
+      case 'ai-stop': if (mine && p.mode === 'ai') { AiCall.unprepare(); U.toast('HR ended the call.'); endAi('caller', 'stopped'); } return;
+      case 'taken': if (mine && p.status === 'ringing') { stopAlerts(); AiCall.unprepare(); clearTimeout(p.ringTimer); Applicant.p = null; U.toast('Answered on another tab.'); renderAll(); } return;
       case 'moved': if (mine) { if (p.rtc) p.rtc.close(); if (p.music) p.music.stop(); VoIP.Mic.close(); Applicant.p = null; U.toast('The call moved to your other tab.'); renderAll(); } return;
       case 'gone': if (mine && p.status !== 'ended') { endLive(); Applicant.p = null; renderAll(); } return;
       case 'connected': if (mine) { p.answeredAt = p.answeredAt || Date.now(); renderAll(); } return;

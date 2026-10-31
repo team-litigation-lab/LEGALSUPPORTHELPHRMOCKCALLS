@@ -35,7 +35,7 @@ const OPEN = 1;
 const now = () => Date.now();
 const newId = () => new Date().toISOString().slice(2, 10).replace(/-/g, '') + '-' + crypto.randomUUID().replace(/-/g, '').slice(0, 8);
 const inviteCode = () => { const a = 'abcdefghjkmnpqrstuvwxyz23456789', b = crypto.getRandomValues(new Uint8Array(12)); return Array.from(b, (x) => a[x % a.length]).join(''); };
-const aiMs = (env) => (Math.min(15, Math.max(2, Number(env.AI_MAX_MINUTES) || 8)) + 2) * 60000;
+const aiMs = (env) => (Math.min(15, Math.max(2, Number(env.AI_MAX_MINUTES) || 5)) + 2) * 60000;
 
 function cleanNote(note) {
   const out = {};

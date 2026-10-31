@@ -44,11 +44,18 @@ async function main() {
   await ap.waitForSelector('#kAns', { timeout: 10000 });
   if (!(await ap.textContent('#screen')).includes('MARIA LOPEZ')) throw new Error('caller ID missing');
   step('agent caller rings the applicant');
+  // While it rings, the phone opens the line to the caller, so there's no wait once it's answered.
+  for (let i = 0; i < 50 && !(await (await fetch('http://127.0.0.1:9911/log')).json()).some((x) => x.token); i++) await ap.waitForTimeout(100);
+  if (!(await (await fetch('http://127.0.0.1:9911/log')).json()).some((x) => x.token)) throw new Error('the line was not warmed up while ringing');
+  step('the line to the caller opened while the phone rang');
 
   await ap.click('#kAns');
   await ap.waitForFunction(() => /On the call/.test(document.querySelector('#screen').textContent), null, { timeout: 20000 });
   const mock = await (await fetch('http://127.0.0.1:9911/log')).json();
   if (!mock.some((x) => x.token && x.system.includes('ZEBRA-MARKER'))) throw new Error('the persona HR typed did not reach the AI');
+  if (mock.filter((x) => x.token).length !== 1) throw new Error('answering should use the warmed line, not open another');
+  if (!mock.some((x) => x.token && x.vad.includes('START_SENSITIVITY_HIGH'))) throw new Error('the caller should hear soft voices (sensitive voice detection)');
+  if (!mock.some((x) => x.token && x.system.includes('about 5 minutes'))) throw new Error('the caller was not told to keep the call to 5 minutes');
   step('applicant answered; the AI got the persona HR typed');
 
   await hr.waitForFunction(() => /Hi, this is Maria/.test(document.querySelector('#aiList').textContent), null, { timeout: 20000 });
@@ -64,18 +71,20 @@ async function main() {
   await hr.screenshot({ path: shots + '/04-hr-agent-follow.png' });
   step('hold, transfer, and HR sees the note');
 
-  await ap.click('#kEnd');
+  // The applicant asks if there's anything else; the caller says goodbye and the line hangs up by itself.
+  await ap.evaluate(() => AiCall.say('Is there anything else I can help you with?'));
+  await ap.waitForFunction(() => !AiCall.active(), null, { timeout: 15000 });
   await ap.waitForSelector('#noteForm button[type=submit]');
   await ap.click('#noteForm button[type=submit]');
   await ap.waitForFunction(() => /interview call is complete/.test(document.body.textContent));
-  step('applicant hung up and submitted the note');
+  step('the caller said goodbye, the call hung up by itself, and the applicant submitted the note');
 
   await hr.goto(BASE + '/#/calls');
   await hr.waitForSelector('#callList tr[data-id]');
   await hr.locator('#callList tr', { hasText: 'Alex Rivera' }).first().click();
   await hr.waitForSelector('#loadRec', { timeout: 10000 });
   const page = await hr.textContent('main');
-  for (const want of ['Hi, this is Maria', 'Next appointment date.', 'ZEBRA-MARKER']) if (!page.includes(want)) throw new Error('call page is missing: ' + want);
+  for (const want of ['Hi, this is Maria', 'Next appointment date.', 'ZEBRA-MARKER', 'Goodbye.', '(goodbye)']) if (!page.includes(want)) throw new Error('call page is missing: ' + want);
   await hr.screenshot({ path: shots + '/05-hr-agent-call.png', fullPage: true });
   step('call log has the transcript, the note, the persona and the recording');
 

@@ -31,12 +31,12 @@
   ],
   "vars": {
     "RECORDING_DAYS": "90",
-    "AI_MAX_MINUTES": "8"
+    "AI_MAX_MINUTES": "5"
   },
   "previews": {
     "vars": {
       "RECORDING_DAYS": "90",
-      "AI_MAX_MINUTES": "8"
+      "AI_MAX_MINUTES": "5"
     },
     "kv_namespaces": [
       {

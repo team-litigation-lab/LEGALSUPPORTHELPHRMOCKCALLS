@@ -11,7 +11,7 @@ const server = http.createServer((req, res) => {
     if (req.url === '/log') { res.end(JSON.stringify(log)); return; }
     if (req.url.startsWith('/v1beta/auth_tokens')) {
       const setup = j.bidiGenerateContentSetup || {};
-      log.push({ token: true, system: JSON.stringify(setup.systemInstruction || {}), voice: JSON.stringify(setup.generationConfig || {}) });
+      log.push({ token: true, system: JSON.stringify(setup.systemInstruction || {}), voice: JSON.stringify(setup.generationConfig || {}), vad: JSON.stringify(setup.realtimeInputConfig || {}) });
       res.end(JSON.stringify({ name: 'auth_tokens/fake' }));
       return;
     }
@@ -38,7 +38,10 @@ wss.on('connection', (ws) => {
       audioIn++;
       if (audioIn === 15) { ws.send(JSON.stringify({ serverContent: { inputTranscription: { text: 'Thank you for calling Legal Support Help, this is Jamie.' } } })); speak('Hi, this is Maria. When is my next appointment?'); }
     }
-    if (m.realtimeInput && m.realtimeInput.text) log.push({ live: 'text', text: m.realtimeInput.text });
+    if (m.realtimeInput && m.realtimeInput.text) {
+      log.push({ live: 'text', text: m.realtimeInput.text });
+      if (/anything else/i.test(m.realtimeInput.text)) setTimeout(() => speak('No, that\'s everything. Thanks so much. Goodbye.'), 300);
+    }
   });
 });
 server.listen(9911, '127.0.0.1', () => console.log('mock gemini on 9911'));

@@ -111,7 +111,7 @@ If they confirm your callback number and the appointment details back to you, th
       { title: 'Information you should try to obtain', items: ['Full name', 'Contact number and email', 'Brief description of the issue', 'Date of incident', 'Location (city/state only)', 'Whether they have spoken to another attorney', 'Best time for a consultation'], note: 'Do not ask for unnecessary details or provide opinions.' },
       { title: 'Key challenges you\'ll be assessed on', items: ['Remaining calm and professional if the caller is emotional', 'Politely explaining that the attorney is unavailable', 'Redirecting the call toward scheduling without sounding dismissive', 'Using clear, neutral, client-friendly language', 'Proper call closing'] },
       { title: 'What you should NOT do', items: ['Do not provide legal advice', 'Do not guarantee outcomes', 'Do not interrupt the caller', 'Do not sound rushed or robotic'] },
-      { title: 'Call duration', text: '⏱ 5–10 minutes' }
+      { title: 'Call duration', text: '⏱ about 5 minutes' }
     ],
     ai: true
   },
