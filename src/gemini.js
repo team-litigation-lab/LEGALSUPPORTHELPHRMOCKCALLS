@@ -6,6 +6,8 @@
    a key that hits its limit rests and the next one takes over.
    GEMINI_BASE (tests only) points the Worker at a stand-in for Google. */
 // This site's own keys, always tried first and taken in turn; the shared LSH pool (if set on this Worker) is the fallback.
+import { claudeOn, claudeGenerate } from './claude.js';
+
 const OWN = ['GEMINI_API_KEY20', 'GEMINI_API_KEY21'];
 const POOL = ['GEMINI_API_KEY5', 'GEMINI_API_KEY6', 'GEMINI_API_KEY7', 'GEMINI_API_KEY8', 'GEMINI_API_KEY9'];
 const SPARE = ['GEMINI_API_KEY', 'GEMINI_API_KEY1', 'GEMINI_API_KEY2'];
@@ -20,7 +22,7 @@ export function keyNames(env) {
   const seen = new Set();
   return [...OWN, ...POOL, ...SPARE].filter((n) => { const v = String(env[n] || '').trim(); if (!v || seen.has(v)) return false; seen.add(v); return true; });
 }
-export const hasAI = (env) => keyNames(env).length > 0;
+export const hasAI = (env) => keyNames(env).length > 0 || claudeOn(env);
 
 let turn = Math.floor(Math.random() * 1000);
 const rest = new Map();   // "<key>|<model>" → rest until
@@ -34,7 +36,9 @@ function keyOrder(env) {
 
 /* One generateContent request, tried model by model and key by key.
    parts: the user turn's parts ([{text}] or [{inlineData}, {text}]). Returns { text, model } or throws. */
-export async function generate(env, { system, parts, json, maxTokens, temperature, contents }) {
+export async function generate(env, opts) {
+  { const c = await claudeGenerate(env, opts); if (c) return c; }   // 🤖 Claude first (claude.js); null: the Gemini keys below
+  const { system, parts, json, maxTokens, temperature, contents } = opts;
   const keys = keyOrder(env);
   if (!keys.length) throw new Error('No AI key is set on this Worker (add GEMINI_API_KEY5 as a secret).');
   const models = [env.GEMINI_MODEL, ...TEXT_MODELS].filter((v, i, a) => v && a.indexOf(v) === i);
