@@ -7,7 +7,7 @@ A browser phone system (VOIP) for the **mock calls in HR interviews**. HR rings 
 
 It **runs on its own, apart from the LSH training platform**: its own admin, its own HR accounts, and **one-time links** for applicants. Nothing here signs in through, or reports to, the Training Portal.
 
-It is cloned from **LSH Ring Channel**'s phone system (the Switchboard, the WebRTC engine, the hold music, transfers, recording and the AI caller). Ring Channel's **CMS integration** (Case Lookup, the CMS Training Library), the **LSH Training Portal** sign-in and course results, the **training scenarios** and metrics, the autograding and the messaging simulators are **left out**.
+It is cloned from **☎ LSH Voice**'s phone system (formerly LSH Ring Channel) (the Switchboard, the WebRTC engine, the hold music, transfers, recording and the AI caller). LSH Voice's **LSH CaseWorks integration** (Case Lookup, the CMS Training Library), the **LSH Training Portal** sign-in and course results, the **training scenarios** and metrics, the autograding and the messaging Sims are **left out**.
 
 Everything runs in the browser: no phone numbers, no phone bills. It's a Cloudflare Worker with one Durable Object (the Switchboard). The audio goes straight between the two browsers over WebRTC, through a TURN relay when a network blocks direct audio.
 
@@ -126,8 +126,8 @@ npx wrangler deploy
 | `SESSION_SECRET` (secret) | Optional: signs the tokens instead (changing it signs everyone out). |
 | `TURN_KEY_ID`, `TURN_KEY_API_TOKEN` (secrets) | Recommended: Cloudflare Realtime TURN, so calls connect on networks that block direct audio. Without them, calls use STUN only. |
 | `GEMINI_API_KEY20`, `GEMINI_API_KEY21` (secrets) | Optional: **this site's own Gemini keys**, for the 🤖 agent caller. They're interchangeable: each call starts on the next one, and when one reaches its limit the other takes over. Keys from two different Google Cloud projects give twice the allowance. Either one alone works. Without a Gemini key, live calls only. |
-| `GEMINI_API_KEY5` … `GEMINI_API_KEY9` (then `GEMINI_API_KEY`, `_KEY1`, `_KEY2`) (secrets) | Optional fallbacks: the shared LSH Gemini key pool (as on Ring Channel), used when `GEMINI_API_KEY20` and `_21` are busy or missing. |
-| `LSH_KV` (KV binding) | The recordings, under `hrmc:rec:`. `wrangler.json` points at the shared LSH KV namespace (the same one as Ring Channel, a separate key prefix); give it its own namespace if you want the interview recordings kept apart. |
+| `GEMINI_API_KEY5` … `GEMINI_API_KEY9` (then `GEMINI_API_KEY`, `_KEY1`, `_KEY2`) (secrets) | Optional fallbacks: the shared LSH Gemini key pool (as on LSH Voice), used when `GEMINI_API_KEY20` and `_21` are busy or missing. |
+| `LSH_KV` (KV binding) | The recordings, under `hrmc:rec:`. `wrangler.json` points at the shared LSH KV namespace (the same one as LSH Voice, a separate key prefix); give it its own namespace if you want the interview recordings kept apart. |
 | `RECORDING_DAYS` | How long recordings are kept (default 90). |
 | `AI_MAX_MINUTES` | How long an agent call runs (default 5). The caller is paced to wrap up inside it, and the call hangs up when the caller says goodbye. |
 
@@ -160,6 +160,6 @@ NODE_PATH=tests/node_modules bash tests/run.sh
 | `src/scenarios.js` | The company, the directory, the note fields, the voices, and the scenarios (empty for now). |
 | `src/prompts.js` | What the agent caller is told. |
 | `src/gemini.js`, `src/auth.js` | The Gemini key pool and Live tokens; the sign-in tokens. |
-| `public/js/phone.js`, `sounds.js`, `ai-call.js` | The VOIP engine (from Ring Channel), the phone sounds and hold music, the agent caller in the browser. |
+| `public/js/phone.js`, `sounds.js`, `ai-call.js` | The VOIP engine (from LSH Voice), the phone sounds and hold music, the agent caller in the browser. |
 | `public/js/app.js` | Sign-in, the top bar, 👥 Applicants, 🗂 Call Logs, a call's page, and 🛡 Admin. |
 | `public/js/hr.js`, `public/js/applicant.js` | HR's console and the applicant's phone. |

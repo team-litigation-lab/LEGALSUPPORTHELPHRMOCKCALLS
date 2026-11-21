@@ -1,6 +1,6 @@
 /**
  * LSH HR Mock Calls: a browser VOIP phone for the mock calls in HR interviews.
- * Cloned from LSH Ring Channel's phone system, without the CMS, the Training Portal or the training scenarios.
+ * Cloned from LSH Voice's phone system, without LSH CaseWorks, the Training Portal or the training scenarios.
  * It stands alone: its own admin, its own HR accounts, and one-time interview links for applicants.
  *
  * Cloudflare Worker + one Durable Object (the Switchboard, src/switchboard.js):

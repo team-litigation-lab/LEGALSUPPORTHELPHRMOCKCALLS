@@ -1,7 +1,7 @@
 /* =========================================================
    The AI agent caller (HR sends it to an applicant's phone)
    ---------------------------------------------------------
-   Voice: Gemini Live, as in LSH Ring Channel. The Worker makes a
+   Voice: Gemini Live, as in LSH Voice. The Worker makes a
    single-use token with the caller's script locked in; this page talks
    straight to Google with it. The microphone goes up as 16-bit PCM; the
    caller comes back as 24 kHz PCM and can be interrupted. Both sides are
