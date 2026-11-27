@@ -71,6 +71,34 @@
     initials(name) { return String(name || '').split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 3).toUpperCase(); }
   };
 
+  /* 🔓 A staff sign-in lasts until 8 hours with no activity (SESSION_IDLE_HOURS in src/auth.js): while this page is open its
+     token is renewed every few minutes, so closing the tab or the browser doesn't sign anyone out. A token that ran out (8 hours
+     with no page open), or a renewal refused (the account was disabled), signs out here. */
+  if (VIEW === 'staff') {
+    const IDLE_MS = 8 * 3600 * 1000, RENEW_MS = 5 * 60 * 1000;
+    const expOf = (t) => { const p = String(t || '').split('.'); return p.length === 4 ? Number(p[2]) || 0 : 0; };
+    const ended = (msg) => { try { sessionStorage.setItem('hrmc_msg', msg || ''); } catch (e) {} API.signOut(); location.hash = '#/'; location.reload(); };
+    if (memToken && expOf(memToken) && expOf(memToken) < Date.now()) API.signOut();   // run out before the page opened: the sign-in shows
+    let busy = false;
+    const renew = async () => {
+      const t = memToken;
+      if (busy || !t || !API.isHR()) return;
+      const left = expOf(t) - Date.now();
+      if (left <= 0) return ended('Signed out after 8 hours without activity.');
+      if (left > IDLE_MS - RENEW_MS && left <= IDLE_MS) return;   // renewed in the last few minutes
+      busy = true;
+      try {
+        const res = await fetch('/api/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: '{}' });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401 && memToken === t) return ended(data.error || '');
+        if (res.ok && data.token && memToken === t) { memToken = data.token; store.set(K_TOKEN, memToken); }
+      } catch (e) { /* offline: try again on the next tick */ } finally { busy = false; }
+    };
+    setInterval(renew, 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) renew(); });
+    setTimeout(renew, 0);
+  }
+
   window.API = API;
   window.U = U;
 })();

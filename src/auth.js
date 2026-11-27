@@ -17,6 +17,12 @@ export function safeEqual(a, b) {
   return r === 0;
 }
 
+/* 🔓 A staff sign-in (admin, HR) lasts until 8 hours with no activity: its token is good for SESSION_IDLE_HOURS and an open
+   page renews it every few minutes (/api/auth/refresh, from public/js/api.js), so closing the tab or the browser signs nobody
+   out. 8 hours with no page open lets it run out; Sign out and a disabled or deleted HR account still end it at once.
+   An applicant's session keeps its own fixed length (⚙️ Settings), from their one-time link. */
+export const SESSION_IDLE_HOURS = 8;
+
 export async function makeToken(env, role, subject, hours) {
   const exp = Date.now() + hours * 3600 * 1000;
   const body = `${role}.${encodeURIComponent(subject).replace(/\./g, '%2E')}.${exp}`;   // a "." in a name would split the token
