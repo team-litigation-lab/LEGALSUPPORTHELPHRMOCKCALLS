@@ -28,6 +28,8 @@ Each page keeps its own sign-in in the browser, so an admin can open a test appl
 | 🧑‍💼 **HR interviewer** | Their **username and password**, made by the admin on 🛡 Admin | 🎛 Console, 👥 Applicants, 🗂 Call Logs. |
 | 👤 **Applicant** | Their **one-time link** | ☎ My phone, for one interview session. |
 
+An admin or HR sign-in **lasts until 8 hours with no activity**: an open page keeps renewing it, so closing the tab or the browser doesn't sign them out. It ends on Sign out, after 8 hours with no page open, or (HR) when the account is disabled or deleted.
+
 **🛡 Admin**
 - **👤 HR accounts:** add one (name shown on calls, username, password of at least 8 characters, stored salted and hashed), change a password, **Disable** (signs them out at once), **Enable**, 🗑 delete. Their calls stay in the Call Logs.
 - **⚙️ Settings:** how long an unopened one-time link works (default **72 hours**) and how long an applicant's session lasts once they open it (default **4 hours**).

@@ -27,6 +27,32 @@ async function main() {
   await adm.screenshot({ path: shots + '/00-admin.png' });
   step('admin signed in and made an HR account');
 
+  // 🔓 A staff sign-in lasts until 8 hours with no activity: the token is good for 8 hours, an open page renews it, a new tab
+  // (the old one closed) opens signed in, and a token that has run out brings back the sign-in.
+  {
+    const actx = await browser.newContext();
+    const first = await actx.newPage();
+    await first.goto(BASE + '/');
+    await first.fill('#hrName', 'Tab Tester');
+    await first.fill('#hrPass', PASS);
+    await first.click('#hrForm button[type=submit]');
+    await first.waitForSelector('#nav a[href="#/admin"]');
+    const tok = await first.evaluate(() => localStorage.getItem('hrmc_staff_token'));
+    const left = Number(tok.split('.')[2]) - Date.now();
+    if (!(left > 7.9 * 3600e3 && left <= 8 * 3600e3)) throw new Error(`a staff token should last 8 hours (${Math.round(left / 60000)} min)`);
+    const r = await first.evaluate(async (t) => { const res = await fetch('/api/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: '{}' }); return { status: res.status, j: await res.json() }; }, tok);
+    if (r.status !== 200 || !r.j.token || r.j.token.split('.')[1] !== tok.split('.')[1]) throw new Error('/api/auth/refresh should renew a staff token: ' + JSON.stringify(r));
+    await first.close();
+    const again = await actx.newPage();
+    await again.goto(BASE + '/');
+    await again.waitForSelector('#nav a[href="#/admin"]');
+    await again.evaluate(() => { const t = localStorage.getItem('hrmc_staff_token').split('.'); t[2] = String(Date.now() - 60000); localStorage.setItem('hrmc_staff_token', t.join('.')); });
+    await again.reload();
+    await again.waitForSelector('#hrForm');
+    await actx.close();
+  }
+  step('a staff sign-in survives a closed tab, is renewed while open, and ends once its 8 hours run out');
+
   // The default landing (/) is the HR & Admin sign-in; the applicant's page (/interview) has only their own entry.
   const plain = await (await browser.newContext()).newPage();
   await plain.goto(BASE + '/interview');

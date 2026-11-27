@@ -23,7 +23,7 @@
  * Recordings are kept in the LSH_KV namespace under "hrmc:rec:" and expire on their own.
  */
 import { Switchboard } from './switchboard.js';
-import { makeToken, readToken, readTokenString, safeEqual, secretOf, hashPassword, checkPassword } from './auth.js';
+import { makeToken, readToken, readTokenString, safeEqual, secretOf, hashPassword, checkPassword, SESSION_IDLE_HOURS } from './auth.js';
 import { COMPANY, DIRECTORY, NOTE_FIELDS, AI_VOICES, listScenarios, applicantBriefing } from './scenarios.js';
 import { RUBRIC } from './rubric.js';
 import { hasAI, generate, liveToken } from './gemini.js';
@@ -118,12 +118,12 @@ export default {
         const u = uname ? await board(env).hrUser(uname) : null;
         if (u && !u.disabled && (await checkPassword(String(password || ''), u.pass))) {
           await board(env).hrLogin(u.username);
-          return json({ token: await makeToken(env, 'h', u.username, 12), role: 'h', id: u.username, name: u.name });
+          return json({ token: await makeToken(env, 'h', u.username, SESSION_IDLE_HOURS), role: 'h', id: u.username, name: u.name });
         }
         // Spaces or a line break pasted around the passphrase (here or in Cloudflare) don't count.
         if (safeEqual(String(password || '').trim(), String(env.ADMIN_PASSPHRASE).trim())) {
           const who = String(username || '').trim().replace(/\s+/g, ' ').slice(0, 40) || 'Admin';
-          return json({ token: await makeToken(env, 'a', who, 12), role: 'a', id: who, name: who });
+          return json({ token: await makeToken(env, 'a', who, SESSION_IDLE_HOURS), role: 'a', id: who, name: who });
         }
         return json({ error: u && u.disabled ? 'This account is disabled. Ask the admin.' : 'Incorrect username or password' }, 401);
       }
@@ -145,6 +145,9 @@ export default {
       const me = await identify(env, tok);
       if (!me) return json({ error: tok && tok.role === 'c' ? 'Your interview session has ended.' : 'Sign-in required' }, 401);
       const hr = me.role === 'h', admin = !!me.admin;
+      // 🔓 An open staff page renews its sign-in (see SESSION_IDLE_HOURS): only a token that is still good, for an account that
+      // is still enabled (identify above), gets a new one. An applicant's session is never lengthened.
+      if (path === '/api/auth/refresh') return json({ token: tok.role === 'c' ? '' : await makeToken(env, tok.role, tok.id, SESSION_IDLE_HOURS) });
       const sb = board(env);
       const body = path === '/api/recording/put' ? null : await request.json().catch(() => ({}));
       const hrOnly = () => json({ error: 'Not allowed' }, 403);
